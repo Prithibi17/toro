@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { authorizeCompany } from "@/lib/authorization";
+import { authorizeCompanyPage } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { serializeFirestore } from "@/lib/firestore-serialization";
@@ -34,7 +34,7 @@ export default async function Page({
   const selected = section.join("/") || "general";
   if (!section.length) redirect(`/workspace/${companyId}/settings/general`);
   if (!sections.has(selected)) notFound();
-  const authz = await authorizeCompany(companyId);
+  const authz = await authorizeCompanyPage(companyId);
   if (!authz.ok) notFound();
   const { membership, effectivePermissions } = authz.access;
   const canManageMembers =

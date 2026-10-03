@@ -5,6 +5,7 @@ import type {
   RoleDefinition,
   SessionUser,
 } from "./types";
+import { cache } from "react";
 import { currentUser } from "./session";
 import { getAdmin } from "./firebase-admin";
 export {
@@ -93,6 +94,11 @@ export async function authorizeCompany(
     },
   };
 }
+
+// Layouts and their pages share this request-scoped access check.
+export const authorizeCompanyPage = cache((companyId: string) =>
+  authorizeCompany(companyId),
+);
 
 export function authorizationStatus(reason: AuthorizationFailure) {
   return reason === "unauthenticated"

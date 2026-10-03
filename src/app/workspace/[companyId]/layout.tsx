@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { authorizeCompany } from "@/lib/authorization";
+import { authorizeCompanyPage } from "@/lib/authorization";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { appAllowed } from "@/lib/permission-engine";
 import { MODULES } from "@/lib/types";
@@ -14,7 +14,7 @@ export default async function Layout({
   const { companyId } = await params;
   let authz;
   try {
-    authz = await authorizeCompany(companyId);
+    authz = await authorizeCompanyPage(companyId);
   } catch {
     redirect("/select-company");
   }

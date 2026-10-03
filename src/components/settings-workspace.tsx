@@ -183,6 +183,7 @@ export function SettingsWorkspace(props: {
   roles: Data[];
   audits: Data[];
 }) {
+  const router = useRouter();
   const { companyId, selected, enabledModules, canManageMembers } = props;
   const [query, setQuery] = useState("");
   const visible = useMemo(
@@ -229,6 +230,17 @@ export function SettingsWorkspace(props: {
                 <Link
                   key={item.id}
                   href={`/workspace/${companyId}/settings/${item.id}`}
+                  prefetch={false}
+                  onMouseEnter={() =>
+                    router.prefetch(
+                      `/workspace/${companyId}/settings/${item.id}`,
+                    )
+                  }
+                  onFocus={() =>
+                    router.prefetch(
+                      `/workspace/${companyId}/settings/${item.id}`,
+                    )
+                  }
                   className={`flex items-center gap-2 rounded-lg px-2 py-2 text-sm ${selected === item.id ? "bg-[var(--soft)] font-bold text-[var(--accent)]" : "muted hover:bg-[var(--soft)] hover:text-[var(--text)]"}`}
                 >
                   {item.icon}

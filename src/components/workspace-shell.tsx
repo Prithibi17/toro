@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Barcode,
   Boxes,
@@ -74,6 +74,7 @@ export function WorkspaceShell({
   const [companies, setCompanies] = useState<CompanyOption[] | null>(null);
   const companyMenuRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
+  const router = useRouter();
   const base = `/workspace/${companyId}`;
   const links = [
     {
@@ -227,6 +228,9 @@ export function WorkspaceShell({
         <nav className="space-y-1">
           {links.map((l) => (
             <Link
+              prefetch={false}
+              onMouseEnter={() => router.prefetch(l.href)}
+              onFocus={() => router.prefetch(l.href)}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${path === l.href ? "bg-[var(--accent)] text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
               href={l.href}
               key={l.href}
@@ -246,6 +250,9 @@ export function WorkspaceShell({
               <Link
                 key={m.key}
                 href={`${base}/${m.key}`}
+                prefetch={false}
+                onMouseEnter={() => router.prefetch(`${base}/${m.key}`)}
+                onFocus={() => router.prefetch(`${base}/${m.key}`)}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${path === `${base}/${m.key}` ? "bg-white/8 text-white" : "text-white/55 hover:bg-white/5 hover:text-white"}`}
               >
                 <span className="grid w-5 place-items-center">
