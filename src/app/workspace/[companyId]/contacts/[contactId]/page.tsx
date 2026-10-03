@@ -22,28 +22,35 @@ export default async function Page({
   const contact = { id: doc.id, ...doc.data() } as Record<string, unknown> & {
     id: string;
   };
-  const [opportunities, meetings, related, timeline] = await Promise.all([
-    db
-      .collection(`companies/${companyId}/crmOpportunities`)
-      .where("customerId", "==", contactId)
-      .limit(200)
-      .get(),
-    db
-      .collection(`companies/${companyId}/calendarEvents`)
-      .where("relatedId", "==", contactId)
-      .limit(100)
-      .get(),
-    db
-      .collection(`companies/${companyId}/contacts`)
-      .where("parentContactId", "==", contactId)
-      .limit(100)
-      .get(),
-    db
-      .collection(`companies/${companyId}/crmTimeline`)
-      .where("entityId", "==", contactId)
-      .limit(100)
-      .get(),
-  ]);
+  const [opportunities, meetings, related, timeline, activities, addresses] =
+    await Promise.all([
+      db
+        .collection(`companies/${companyId}/crmOpportunities`)
+        .where("customerId", "==", contactId)
+        .limit(200)
+        .get(),
+      db
+        .collection(`companies/${companyId}/calendarEvents`)
+        .where("relatedId", "==", contactId)
+        .limit(100)
+        .get(),
+      db
+        .collection(`companies/${companyId}/contacts`)
+        .where("parentContactId", "==", contactId)
+        .limit(100)
+        .get(),
+      db
+        .collection(`companies/${companyId}/crmTimeline`)
+        .where("entityId", "==", contactId)
+        .limit(100)
+        .get(),
+      db
+        .collection(`companies/${companyId}/crmActivities`)
+        .where("relatedId", "==", contactId)
+        .limit(100)
+        .get(),
+      doc.ref.collection("addresses").limit(50).get(),
+    ]);
   const pipelineValue = opportunities.docs.reduce(
     (n, d) => n + Number(d.data().value || 0),
     0,
@@ -59,7 +66,9 @@ export default async function Page({
           Contacts
         </Link>
         <h1 className="mt-2 text-3xl font-extrabold">
-          {String(contact.title ?? contact.name ?? "Contact")}
+          {String(
+            contact.displayName ?? contact.title ?? contact.name ?? "Contact",
+          )}
         </h1>
         <p className="mt-1 muted capitalize">
           {String(contact.contactType ?? contact.status ?? "business contact")}
@@ -100,6 +109,35 @@ export default async function Page({
               <Info label="Address" value={contact.address} />
               <Info label="Account owner" value={contact.ownerName} />
             </div>
+            <div className="mt-6 border-t border-[var(--border)] pt-5">
+              <h2 className="font-bold">Addresses</h2>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {addresses.docs.map((address) => (
+                  <div
+                    key={address.id}
+                    className="rounded-xl bg-[var(--soft)] p-3"
+                  >
+                    <b className="capitalize">
+                      {String(address.data().label || address.data().type)}
+                    </b>
+                    <p className="mt-1 text-sm muted">
+                      {[
+                        address.data().street,
+                        address.data().city,
+                        address.data().state,
+                        address.data().postalCode,
+                        address.data().country,
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || "No address details"}
+                    </p>
+                  </div>
+                ))}
+                {addresses.empty ? (
+                  <p className="text-sm muted">No structured addresses.</p>
+                ) : null}
+              </div>
+            </div>
           </section>
           <section className="panel p-6">
             <h2 className="font-bold">Related contacts</h2>
@@ -125,6 +163,17 @@ export default async function Page({
         <aside className="panel p-5">
           <h2 className="font-bold">Chatter</h2>
           <div className="mt-4 space-y-3">
+            {activities.docs.map((d) => (
+              <article key={d.id} className="rounded-xl bg-[var(--soft)] p-3">
+                <b>{String(d.data().title ?? d.data().type)}</b>
+                <p className="mt-1 text-sm muted">
+                  {String(d.data().description ?? "")}
+                </p>
+                <p className="mt-2 text-xs muted">
+                  {String(date(d.data().dueAt) ?? "")}
+                </p>
+              </article>
+            ))}
             {timeline.docs.map((d) => (
               <article key={d.id} className="rounded-xl bg-[var(--soft)] p-3">
                 <b className="capitalize">
@@ -135,7 +184,7 @@ export default async function Page({
                 </p>
               </article>
             ))}
-            {timeline.empty ? (
+            {timeline.empty && activities.empty ? (
               <p className="text-sm muted">No contact activity yet.</p>
             ) : null}
           </div>
