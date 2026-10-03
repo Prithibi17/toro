@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { currentUser } from "@/lib/session";
+import { currentUser, memberships } from "@/lib/session";
 import { getAdmin } from "@/lib/firebase-admin";
 import { companySchema } from "@/lib/validation";
 import { MODULES } from "@/lib/types";
 import { createDefaultCrmStages } from "@/lib/crm-defaults";
+
+export async function GET() {
+  const user = await currentUser();
+  if (!user)
+    return NextResponse.json(
+      { error: "Authentication required" },
+      { status: 401 },
+    );
+  const list = await memberships(user.uid);
+  return NextResponse.json({
+    companies: list.map((membership) => ({
+      id: membership.companyId,
+      name: membership.companyName,
+      role: membership.role,
+    })),
+  });
+}
 export async function POST(req: Request) {
   const user = await currentUser();
   if (!user)

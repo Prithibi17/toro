@@ -9,26 +9,33 @@ import {
   ChartNoAxesCombined,
   CheckSquare2,
   ChevronDown,
+  Check,
   Factory,
   Grid2X2,
   LayoutDashboard,
+  LogOut,
   Menu,
   MessageCircle,
+  Plus,
   ReceiptText,
   Search,
   Settings,
   ShoppingCart,
   Store,
+  UserRound,
   Users,
   WalletCards,
   Wrench,
   X,
 } from "lucide-react";
-import { useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import { signOut } from "firebase/auth";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationMenu } from "./notification-menu";
 import { MODULES, type ModuleKey } from "@/lib/types";
+import { auth } from "@/lib/firebase-client";
+type CompanyOption = { id: string; name: string; role: string };
 const glyphs: Record<ModuleKey, ComponentType<{ size?: number }>> = {
   discuss: MessageCircle,
   calendar: CalendarDays,
@@ -63,6 +70,9 @@ export function WorkspaceShell({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [companyMenu, setCompanyMenu] = useState(false);
+  const [companies, setCompanies] = useState<CompanyOption[] | null>(null);
+  const companyMenuRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   const base = `/workspace/${companyId}`;
   const links = [
@@ -93,6 +103,29 @@ export function WorkspaceShell({
         ]
       : []),
   ];
+  useEffect(() => {
+    if (!companyMenu) return;
+    const close = (event: MouseEvent) => {
+      if (!companyMenuRef.current?.contains(event.target as Node))
+        setCompanyMenu(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [companyMenu]);
+  async function toggleCompanyMenu() {
+    const next = !companyMenu;
+    setCompanyMenu(next);
+    if (next && !companies) {
+      const response = await fetch("/api/companies");
+      if (response.ok) setCompanies((await response.json()).companies ?? []);
+      else setCompanies([]);
+    }
+  }
+  async function logout() {
+    if (auth) await signOut(auth);
+    await fetch("/api/auth/session", { method: "DELETE" });
+    location.href = "/login";
+  }
   return (
     <div className="min-h-screen md:grid md:grid-cols-[248px_1fr]">
       <aside
@@ -104,23 +137,93 @@ export function WorkspaceShell({
             <X />
           </button>
         </div>
-        <Link
-          href="/select-company"
-          className="my-6 flex items-center gap-3 rounded-xl bg-white/7 p-3"
-        >
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-white/10">
-            <Building2 size={18} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">
-              {companyName}
+        <div className="relative my-6" ref={companyMenuRef}>
+          <button
+            type="button"
+            aria-expanded={companyMenu}
+            aria-haspopup="menu"
+            onClick={toggleCompanyMenu}
+            className="flex w-full items-center gap-3 rounded-xl bg-white/7 p-3 text-left hover:bg-white/10"
+          >
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-white/10">
+              <Building2 size={18} />
             </span>
-            <span className="block text-xs capitalize text-white/45">
-              {role}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">
+                {companyName}
+              </span>
+              <span className="block text-xs capitalize text-white/45">
+                {role}
+              </span>
             </span>
-          </span>
-          <ChevronDown size={15} />
-        </Link>
+            <ChevronDown
+              size={15}
+              className={`transition ${companyMenu ? "rotate-180" : ""}`}
+            />
+          </button>
+          {companyMenu && (
+            <div
+              role="menu"
+              className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-xl border border-white/10 bg-[#121b18] p-2 shadow-2xl"
+            >
+              <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-[.16em] text-white/35">
+                Workspaces
+              </p>
+              {companies === null ? (
+                <p className="px-2 py-3 text-xs text-white/45">Loading…</p>
+              ) : (
+                companies.map((company) => (
+                  <Link
+                    role="menuitem"
+                    key={company.id}
+                    href={`/workspace/${company.id}/dashboard`}
+                    onClick={() => setCompanyMenu(false)}
+                    className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-white/70 hover:bg-white/8 hover:text-white"
+                  >
+                    <span className="grid h-7 w-7 place-items-center rounded-md bg-white/8">
+                      <Building2 size={14} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-semibold">
+                        {company.name}
+                      </span>
+                      <span className="block text-[10px] capitalize text-white/40">
+                        {company.role}
+                      </span>
+                    </span>
+                    {company.id === companyId && <Check size={14} />}
+                  </Link>
+                ))
+              )}
+              <div className="my-1 border-t border-white/10" />
+              <MenuLink
+                href="/select-company"
+                icon={<Grid2X2 size={15} />}
+                label="All workspaces"
+                close={() => setCompanyMenu(false)}
+              />
+              <MenuLink
+                href="/create-company"
+                icon={<Plus size={15} />}
+                label="Create company"
+                close={() => setCompanyMenu(false)}
+              />
+              <MenuLink
+                href="/account/settings"
+                icon={<UserRound size={15} />}
+                label="Account settings"
+                close={() => setCompanyMenu(false)}
+              />
+              <button
+                role="menuitem"
+                onClick={logout}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-white/60 hover:bg-white/8 hover:text-white"
+              >
+                <LogOut size={15} /> Logout
+              </button>
+            </div>
+          )}
+        </div>
         <nav className="space-y-1">
           {links.map((l) => (
             <Link
@@ -190,5 +293,29 @@ export function WorkspaceShell({
         />
       )}
     </div>
+  );
+}
+
+function MenuLink({
+  href,
+  icon,
+  label,
+  close,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  label: string;
+  close: () => void;
+}) {
+  return (
+    <Link
+      role="menuitem"
+      href={href}
+      onClick={close}
+      className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-white/60 hover:bg-white/8 hover:text-white"
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }
