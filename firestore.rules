@@ -207,7 +207,7 @@ service cloud.firestore {
         match /comments/{commentId} {
           allow read: if isActiveMember(companyId);
 
-          allow create: if conversationAccess(companyId, channelId)
+          allow create: if isActiveMember(companyId)
             && request.resource.data.senderId == request.auth.uid;
 
           allow update, delete: if isActiveMember(companyId)
