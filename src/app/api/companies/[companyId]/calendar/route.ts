@@ -90,7 +90,17 @@ export async function POST(
       batch,
     );
     await batch.commit();
-    return NextResponse.json({ id: ref.id }, { status: 201 });
+    return NextResponse.json(
+      {
+        event: {
+          id: ref.id,
+          ...input,
+          creatorId: auth.access.user.uid,
+          ownerId: auth.access.user.uid,
+        },
+      },
+      { status: 201 },
+    );
   } catch (e) {
     return NextResponse.json(
       {

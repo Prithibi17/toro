@@ -85,8 +85,8 @@ export function CrmWorkspace({
       }),
       j = await r.json();
     if (r.ok) {
+      setRecords((current) => [j.record, ...current]);
       setCreateStage(null);
-      await load();
     } else setError(j.error ?? "Could not create opportunity");
   }
   async function move(id: string, stageId: string) {
@@ -103,7 +103,7 @@ export function CrmWorkspace({
     if (!r.ok) {
       setRecords(before);
       setError((await r.json()).error);
-    } else await load();
+    }
   }
   const firstStage = String(
     stages.find((s) => s.stageType === "OPEN")?.id ?? stages[0]?.id ?? "",

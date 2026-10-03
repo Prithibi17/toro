@@ -22,18 +22,51 @@ export function TodoRecord({
   history: I[];
 }) {
   const router = useRouter(),
+    [record, setRecord] = useState(task),
+    [timeline, setTimeline] = useState(history),
     [activity, setActivity] = useState(false),
     [error, setError] = useState("");
-  const current = stages.find((s) => s.id === task.stageId),
-    done = Boolean(task.completedAt) || Boolean(current?.isDone);
+  const current = stages.find((s) => s.id === record.stageId),
+    done = Boolean(record.completedAt) || Boolean(current?.isDone);
   async function update(body: Record<string, unknown>) {
-    const r = await fetch(`/api/companies/${companyId}/tasks/${task.id}`, {
+    const previous = record;
+    const selectedStage = body.stageId
+      ? stages.find((stage) => stage.id === body.stageId)
+      : undefined;
+    const optimistic = {
+      ...record,
+      ...body,
+      ...(selectedStage
+        ? {
+            completedAt: selectedStage.isDone ? new Date().toISOString() : null,
+          }
+        : {}),
+    };
+    setRecord(optimistic);
+    setError("");
+    const r = await fetch(`/api/companies/${companyId}/tasks/${record.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (r.ok) router.refresh();
-    else setError((await r.json()).error);
+    if (r.ok) {
+      setTimeline((currentHistory) => [
+        {
+          id: `local-${Date.now()}`,
+          eventType: body.archived
+            ? "archived"
+            : body.stageId
+              ? "stage_changed"
+              : "updated",
+          timestamp: new Date().toISOString(),
+        },
+        ...currentHistory,
+      ]);
+      if (body.archived) router.push(`/workspace/${companyId}/todo`);
+    } else {
+      setRecord(previous);
+      setError((await r.json()).error);
+    }
   }
   async function schedule(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,7 +74,7 @@ export function TodoRecord({
       new FormData(e.currentTarget),
     );
     body.relatedType = "task";
-    body.relatedId = task.id;
+    body.relatedId = record.id;
     body.dueAt = new Date(String(body.dueAt)).toISOString();
     const r = await fetch(`/api/companies/${companyId}/crm/activities`, {
       method: "POST",
@@ -50,7 +83,14 @@ export function TodoRecord({
     });
     if (r.ok) {
       setActivity(false);
-      router.refresh();
+      setTimeline((currentHistory) => [
+        {
+          id: `activity-${Date.now()}`,
+          eventType: "activity_scheduled",
+          timestamp: new Date().toISOString(),
+        },
+        ...currentHistory,
+      ]);
     } else setError((await r.json()).error);
   }
   return (
@@ -64,7 +104,9 @@ export function TodoRecord({
             <ArrowLeft size={15} />
             My To-Do
           </Link>
-          <h1 className="mt-2 text-3xl font-extrabold">{String(task.title)}</h1>
+          <h1 className="mt-2 text-3xl font-extrabold">
+            {String(record.title)}
+          </h1>
         </div>
         <div className="flex gap-2">
           <button
@@ -104,7 +146,7 @@ export function TodoRecord({
             <Field label="Stage">
               <select
                 className="input"
-                value={String(task.stageId)}
+                value={String(record.stageId)}
                 onChange={(e) => update({ stageId: e.target.value })}
               >
                 {stages.map((s) => (
@@ -117,7 +159,7 @@ export function TodoRecord({
             <Field label="Priority">
               <select
                 className="input"
-                value={String(task.priority || "medium")}
+                value={String(record.priority || "medium")}
                 onChange={(e) => update({ priority: e.target.value })}
               >
                 <option>low</option>
@@ -130,7 +172,7 @@ export function TodoRecord({
               <input
                 className="input"
                 type="date"
-                value={String(task.dueDate || "")}
+                value={String(record.dueDate || "")}
                 onChange={(e) => update({ dueDate: e.target.value })}
               />
             </Field>
@@ -139,7 +181,7 @@ export function TodoRecord({
             <p className="label">Description</p>
             <textarea
               className="input min-h-48"
-              defaultValue={String(task.description || "")}
+              defaultValue={String(record.description || "")}
               onBlur={(e) => update({ description: e.target.value })}
             />
           </div>
@@ -147,7 +189,7 @@ export function TodoRecord({
         <aside className="panel p-5">
           <h2 className="font-bold">Activity / History</h2>
           <div className="mt-4 space-y-3">
-            {history
+            {[...timeline]
               .sort((a, b) =>
                 String(b.timestamp).localeCompare(String(a.timestamp)),
               )

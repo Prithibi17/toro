@@ -65,8 +65,9 @@ export function TaskBoard({ companyId }: { companyId: string }) {
       body: JSON.stringify(body),
     });
     if (r.ok) {
+      const result = await r.json();
+      setTasks((current) => [result.task, ...current]);
       setAdding(null);
-      await load();
     } else setError((await r.json()).error);
   }
   async function move(id: string, stageId: string) {
@@ -80,7 +81,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     if (!r.ok) {
       setTasks(before);
       setError((await r.json()).error);
-    } else await load();
+    }
   }
   async function addStage(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -90,8 +91,9 @@ export function TaskBoard({ companyId }: { companyId: string }) {
       body: JSON.stringify(Object.fromEntries(new FormData(e.currentTarget))),
     });
     if (r.ok) {
+      const result = await r.json();
+      setStages((current) => [...current, result.stage]);
       setNewStage(false);
-      await load();
     } else setError((await r.json()).error);
   }
   const overdue = (t: Task) =>
@@ -165,6 +167,9 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                       }
                       onClick={() =>
                         router.push(`/workspace/${companyId}/todo/${t.id}`)
+                      }
+                      onPointerEnter={() =>
+                        router.prefetch(`/workspace/${companyId}/todo/${t.id}`)
                       }
                       className="panel cursor-pointer p-4"
                     >

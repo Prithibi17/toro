@@ -42,29 +42,26 @@ export async function authorizeCompany(
   const user = await currentUser();
   if (!user) return { ok: false, reason: "unauthenticated" };
   const db = getAdmin().db;
-  const [member, company] = await Promise.all([
-    db.doc(`companies/${companyId}/members/${user.uid}`).get(),
-    db.doc(`companies/${companyId}`).get(),
-  ]);
+  const member = await db
+    .doc(`companies/${companyId}/members/${user.uid}`)
+    .get();
   if (!member.exists || member.data()?.status !== "active")
     return { ok: false, reason: "not_member" };
   const membership = member.data() as Membership;
   if (accessExpired(membership)) return { ok: false, reason: "access_expired" };
   const roleIds = membership.roleIds ?? [];
-  const roleSnapshots = await Promise.all(
-    roleIds.map((id) => db.doc(`companies/${companyId}/roles/${id}`).get()),
-  );
+  const roleSnapshots = roleIds.length
+    ? await db.getAll(
+        ...roleIds.map((id) => db.doc(`companies/${companyId}/roles/${id}`)),
+      )
+    : [];
   const roles = roleSnapshots
     .filter((snap) => snap.exists)
     .map((snap) => ({ id: snap.id, ...snap.data() }) as RoleDefinition);
   const effective = effectivePermissions(membership, roles);
   if (
     requirements.module &&
-    !(
-      company.data()?.enabledModules ??
-      membership.enabledModules ??
-      []
-    ).includes(requirements.module)
+    !(membership.enabledModules ?? []).includes(requirements.module)
   ) {
     return { ok: false, reason: "module_disabled" };
   }

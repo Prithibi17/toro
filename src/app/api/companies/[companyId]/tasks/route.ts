@@ -132,7 +132,16 @@ export async function POST(
       batch,
     );
     await batch.commit();
-    return NextResponse.json({ id: ref.id }, { status: 201 });
+    return NextResponse.json(
+      {
+        task: {
+          id: ref.id,
+          ...data,
+          completedAt: null,
+        },
+      },
+      { status: 201 },
+    );
   } catch (e) {
     return NextResponse.json(
       {

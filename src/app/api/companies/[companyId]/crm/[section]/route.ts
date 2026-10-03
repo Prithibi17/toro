@@ -463,7 +463,10 @@ export async function POST(
       timestamp: FieldValue.serverTimestamp(),
     });
     await batch.commit();
-    return NextResponse.json({ id: ref.id }, { status: 201 });
+    return NextResponse.json(
+      { record: { id: ref.id, ...input } },
+      { status: 201 },
+    );
   } catch (e) {
     return NextResponse.json(
       {

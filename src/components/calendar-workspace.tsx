@@ -95,25 +95,34 @@ export function CalendarWorkspace({
       body: JSON.stringify(body),
     });
     if (r.ok) {
+      const result = await r.json();
+      setEvents((current) => [result.event, ...current]);
       setOpen(null);
-      await load();
     } else setError((await r.json()).error);
   }
   async function move(id: string, target: Date) {
     const old = events.find((e) => e.id === id);
     if (!old) return;
     const duration =
-        new Date(old.end).getTime() - new Date(old.start).getTime(),
-      r = await fetch(`/api/companies/${companyId}/calendar/${id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          start: target.toISOString(),
-          end: new Date(target.getTime() + duration).toISOString(),
-        }),
-      });
-    if (r.ok) await load();
-    else setError((await r.json()).error);
+      new Date(old.end).getTime() - new Date(old.start).getTime();
+    const next = {
+      start: target.toISOString(),
+      end: new Date(target.getTime() + duration).toISOString(),
+    };
+    setEvents((current) =>
+      current.map((event) => (event.id === id ? { ...event, ...next } : event)),
+    );
+    const r = await fetch(`/api/companies/${companyId}/calendar/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(next),
+    });
+    if (!r.ok) {
+      setEvents((current) =>
+        current.map((event) => (event.id === id ? old : event)),
+      );
+      setError((await r.json()).error);
+    }
   }
   return (
     <div className="-m-4 sm:-m-6 lg:-m-8">

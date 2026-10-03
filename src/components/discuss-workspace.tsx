@@ -52,6 +52,7 @@ type Message = {
   pinned?: boolean;
   editedAt?: { toDate: () => Date } | null;
   deletedAt?: { toDate: () => Date } | null;
+  deliveryStatus?: "sending" | "failed";
 };
 export function DiscussWorkspace({
   companyId,
@@ -171,6 +172,28 @@ export function DiscussWorkspace({
   );
   async function send() {
     if ((!text.trim() && !upload) || !selected) return;
+    const content = text;
+    const attachment = upload;
+    const clientNonce = nonce.current;
+    const optimisticId = `pending_${clientNonce}`;
+    const optimistic: Message = {
+      id: optimisticId,
+      content,
+      attachment: attachment ?? undefined,
+      parentMessageId: replyTo?.id ?? null,
+      senderId: userId,
+      senderName:
+        members.find((member) => member.id === userId)?.displayName || "You",
+      createdAt: { toDate: () => new Date() },
+      reactions: {},
+      deliveryStatus: "sending",
+    };
+    setMessages((current) => [...current, optimistic]);
+    setText("");
+    setUpload(null);
+    setProgress(0);
+    setReplyTo(null);
+    nonce.current = crypto.randomUUID();
     setSending(true);
     const r = await fetch(
       `/api/companies/${companyId}/discuss/${selected}/messages`,
@@ -178,19 +201,32 @@ export function DiscussWorkspace({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          content: text,
-          attachment: upload,
-          clientNonce: nonce.current,
-          parentMessageId: replyTo?.id ?? null,
+          content,
+          attachment,
+          clientNonce,
+          parentMessageId: optimistic.parentMessageId,
         }),
       },
     );
     if (r.ok) {
-      setText("");
-      setUpload(null);
-      setProgress(0);
-      setReplyTo(null);
-      nonce.current = crypto.randomUUID();
+      const result = await r.json();
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === optimisticId
+            ? { ...message, id: result.id, deliveryStatus: undefined }
+            : message,
+        ),
+      );
+    } else {
+      const result = await r.json();
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === optimisticId
+            ? { ...message, deliveryStatus: "failed" }
+            : message,
+        ),
+      );
+      setListenerError(result.error || "Could not send message");
     }
     setSending(false);
   }
@@ -198,6 +234,29 @@ export function DiscussWorkspace({
     message: Message,
     body: Record<string, unknown>,
   ) {
+    const before = messages;
+    if (body.action === "pin") {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id
+            ? { ...item, pinned: Boolean(body.pinned) }
+            : item,
+        ),
+      );
+    }
+    if (body.action === "react" && typeof body.reaction === "string") {
+      setMessages((current) =>
+        current.map((item) => {
+          if (item.id !== message.id) return item;
+          const reactions = { ...(item.reactions || {}) };
+          const users = new Set(reactions[body.reaction as string] || []);
+          if (users.has(userId)) users.delete(userId);
+          else users.add(userId);
+          reactions[body.reaction as string] = [...users];
+          return { ...item, reactions };
+        }),
+      );
+    }
     const response = await fetch(
       `/api/companies/${companyId}/discuss/${selected}/messages/${message.id}`,
       {
@@ -207,6 +266,7 @@ export function DiscussWorkspace({
       },
     );
     if (!response.ok) {
+      setMessages(before);
       const result = await response.json();
       setListenerError(result.error || "Message action failed");
     }
@@ -750,6 +810,13 @@ function MessageBubble({
               ) : null,
             )}
           </div>
+        )}
+        {m.deliveryStatus && (
+          <small
+            className={m.deliveryStatus === "failed" ? "text-red-500" : "muted"}
+          >
+            {m.deliveryStatus === "failed" ? "Could not send" : "Sending…"}
+          </small>
         )}
       </div>
     </div>

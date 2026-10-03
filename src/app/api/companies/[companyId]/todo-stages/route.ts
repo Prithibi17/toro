@@ -60,7 +60,18 @@ export async function POST(
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    return NextResponse.json({ id: ref.id }, { status: 201 });
+    return NextResponse.json(
+      {
+        stage: {
+          id: ref.id,
+          ...input,
+          sequence: s.size,
+          isDone: false,
+          isFolded: false,
+        },
+      },
+      { status: 201 },
+    );
   } catch {
     return NextResponse.json({ error: "Invalid stage" }, { status: 400 });
   }
