@@ -3,14 +3,7 @@ import { requireMembership } from "@/lib/session";
 import { getAdmin } from "@/lib/firebase-admin";
 import { canReadTask } from "@/lib/authorization";
 import { TodoRecord } from "@/components/todo-record";
-const plain = (v: unknown): unknown =>
-  v && typeof v === "object" && "toDate" in v
-    ? (v as { toDate(): Date }).toDate().toISOString()
-    : Array.isArray(v)
-      ? v.map(plain)
-      : v && typeof v === "object"
-        ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)]))
-        : v;
+import { serializeFirestore } from "@/lib/firestore-serialization";
 export default async function Page({
   params,
 }: {
@@ -38,22 +31,27 @@ export default async function Page({
     <TodoRecord
       companyId={companyId}
       task={
-        plain({ id: doc.id, ...doc.data() }) as Record<string, unknown> & {
+        serializeFirestore({ id: doc.id, ...doc.data() }) as Record<
+          string,
+          unknown
+        > & {
           id: string;
         }
       }
-      stages={stages.docs
-        .map(
-          (d) =>
-            ({ id: d.id, ...d.data() }) as Record<string, unknown> & {
-              id: string;
-            },
-        )
-        .sort((a, b) => Number(a.sequence) - Number(b.sequence))}
+      stages={serializeFirestore(
+        stages.docs
+          .map(
+            (d) =>
+              ({ id: d.id, ...d.data() }) as Record<string, unknown> & {
+                id: string;
+              },
+          )
+          .sort((a, b) => Number(a.sequence) - Number(b.sequence)),
+      )}
       history={
-        plain(history.docs.map((d) => ({ id: d.id, ...d.data() }))) as Array<
-          Record<string, unknown> & { id: string }
-        >
+        serializeFirestore(
+          history.docs.map((d) => ({ id: d.id, ...d.data() })),
+        ) as Array<Record<string, unknown> & { id: string }>
       }
     />
   );
