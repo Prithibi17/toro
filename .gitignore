@@ -1,6 +1,13 @@
 node_modules
 .next
+.next-build-20260924
+.next-build-calls
+.next-build-discuss
+.next-stale-20260924
 .env*
 !.env.example
 firebase-debug.log
 .vercel
+tsconfig.tsbuildinfo
+outputs
+work

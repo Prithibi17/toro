@@ -2,7 +2,9 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function activeMember(companyId) { return request.auth != null && firestore.exists(/databases/(default)/documents/companies/$(companyId)/members/$(request.auth.uid)) && firestore.get(/databases/(default)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.status == 'active'; }
-    match /users/{uid}/{allPaths=**} { allow read, write: if request.auth != null && request.auth.uid == uid && request.resource.size < 5 * 1024 * 1024; }
-    match /companies/{companyId}/{allPaths=**} { allow read: if activeMember(companyId); allow write: if activeMember(companyId) && request.resource.size < 20 * 1024 * 1024; }
+    function safeContentType() { return request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('text/plain') || request.resource.contentType.matches('text/csv') || request.resource.contentType.matches('application/(msword|vnd.openxmlformats-officedocument.*)'); }
+    match /users/{uid}/profile/{fileName} { allow read: if request.auth != null && request.auth.uid == uid; allow create, update: if request.auth != null && request.auth.uid == uid && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*'); allow delete: if request.auth != null && request.auth.uid == uid; }
+    match /companies/{companyId}/files/discuss/{channelId}/{fileName} { allow read: if activeMember(companyId); allow create: if activeMember(companyId) && request.resource.size < 20 * 1024 * 1024 && safeContentType(); allow update: if false; allow delete: if activeMember(companyId); }
+    match /companies/{companyId}/logos/{fileName} { allow read: if activeMember(companyId); allow create, update: if activeMember(companyId) && request.resource.size < 5 * 1024 * 1024 && request.resource.contentType.matches('image/.*'); allow delete: if false; }
   }
 }

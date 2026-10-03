@@ -25,6 +25,27 @@ service cloud.firestore {
         && get(memberPath(companyId, request.auth.uid)).data.status == "active";
     }
 
+    function conversationAccess(companyId, channelId) {
+      let channel = get(/databases/$(database)/documents/companies/$(companyId)/channels/$(channelId));
+      return isActiveMember(companyId)
+        && exists(/databases/$(database)/documents/companies/$(companyId)/channels/$(channelId))
+        && (
+          !channel.data.keys().hasAny(["type"])
+          || channel.data.type == "public"
+          || request.auth.uid in channel.data.memberIds
+          || (
+            channel.data.type == "department"
+            && channel.data.departmentId in get(memberPath(companyId, request.auth.uid)).data.departmentIds
+          )
+        );
+    }
+
+    function callAccess(companyId, callId) {
+      let call = get(/databases/$(database)/documents/companies/$(companyId)/calls/$(callId));
+      return exists(/databases/$(database)/documents/companies/$(companyId)/calls/$(callId))
+        && conversationAccess(companyId, call.data.conversationId);
+    }
+
     function memberRole(companyId) {
       return get(
         memberPath(companyId, request.auth.uid)
@@ -146,6 +167,11 @@ service cloud.firestore {
             || request.auth.uid == resource.data.creatorId
             || request.auth.uid in resource.data.assigneeIds
             || request.auth.uid in resource.data.viewerIds
+             || (
+               memberRole(companyId) == "manager"
+               && resource.data.keys().hasAny(["departmentIds"])
+               && resource.data.departmentIds.hasAny(get(memberPath(companyId, request.auth.uid)).data.departmentIds)
+             )
           );
 
         allow create: if isActiveMember(companyId)
@@ -172,11 +198,11 @@ service cloud.firestore {
         match /comments/{commentId} {
           allow read: if isActiveMember(companyId);
 
-          allow create: if isActiveMember(companyId)
-            && request.resource.data.authorId == request.auth.uid;
+          allow create: if conversationAccess(companyId, channelId)
+            && request.resource.data.senderId == request.auth.uid;
 
           allow update, delete: if isActiveMember(companyId)
-            && resource.data.authorId == request.auth.uid;
+            && resource.data.senderId == request.auth.uid;
         }
       }
 
@@ -184,12 +210,12 @@ service cloud.firestore {
        * Discussions and channel messages
        */
       match /channels/{channelId} {
-        allow read: if isActiveMember(companyId);
+        allow read: if conversationAccess(companyId, channelId);
 
         allow create, update, delete: if isCompanyAdmin(companyId);
 
         match /messages/{messageId} {
-          allow read: if isActiveMember(companyId);
+          allow read: if conversationAccess(companyId, channelId);
 
           allow create: if isActiveMember(companyId)
             && request.resource.data.authorId == request.auth.uid;
@@ -206,11 +232,11 @@ service cloud.firestore {
        * an existing signal document.
        */
       match /calls/{callId} {
-        allow read, create, update: if isActiveMember(companyId);
-        allow delete: if false;
+        allow read: if callAccess(companyId, callId);
+        allow create, update, delete: if false;
 
         match /{candidateCollection}/{candidateId} {
-          allow read, create, update: if isActiveMember(companyId);
+          allow read, create, update: if callAccess(companyId, callId);
           allow delete: if false;
         }
       }
@@ -277,6 +303,35 @@ service cloud.firestore {
           && hasEnabledModule(companyId, "crm");
         allow write: if isCompanyAdmin(companyId)
           && hasEnabledModule(companyId, "crm");
+      }
+
+      match /crmLeads/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
+      }
+      match /crmContacts/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
+      }
+      match /crmOrganizations/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
+      }
+      match /crmOpportunities/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
+      }
+      match /crmPipelines/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
+      }
+      match /crmPipelineStages/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
+      }
+      match /crmActivities/{recordId} {
+        allow read: if isActiveMember(companyId) && hasEnabledModule(companyId, "crm");
+        allow write: if false;
       }
 
       match /salesOrders/{recordId} {

@@ -1,1 +1,36 @@
-{"name":"toro-erp","version":"0.1.0","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start","lint":"eslint .","typecheck":"tsc --noEmit"},"dependencies":{"clsx":"^2.1.1","firebase":"^12.2.1","firebase-admin":"^13.4.0","lucide-react":"^0.468.0","next":"^15.5.2","react":"^19.1.1","react-dom":"^19.1.1","zod":"^4.1.5"},"devDependencies":{"@eslint/eslintrc":"^3.3.1","@tailwindcss/postcss":"^4.1.14","@types/node":"^22.10.2","@types/react":"^19.0.3","@types/react-dom":"^19.0.2","eslint":"^9.17.0","eslint-config-next":"^15.5.2","prettier":"^3.9.9","tailwindcss":"^4.1.14","typescript":"^5.7.2"}}
+{
+  "name": "toro-erp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "firebase": "^12.2.1",
+    "firebase-admin": "^13.4.0",
+    "lucide-react": "^0.468.0",
+    "next": "^15.5.2",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.5.2",
+    "prettier": "^3.9.9",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  }
+}

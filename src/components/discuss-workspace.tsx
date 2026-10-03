@@ -76,6 +76,7 @@ export function DiscussWorkspace({
   } | null>(null);
   const [progress, setProgress] = useState(0);
   const [sending, setSending] = useState(false);
+  const [listenerError, setListenerError] = useState("");
   const [mobileChat, setMobileChat] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const active = conversations.find((c) => c.id === selected);
@@ -93,12 +94,24 @@ export function DiscussWorkspace({
       orderBy("createdAt", "desc"),
       limit(50),
     );
-    return onSnapshot(q, (s) => {
-      setMessages(
-        s.docs.map((d) => ({ id: d.id, ...d.data() }) as Message).reverse(),
-      );
-      setTimeout(() => bottom.current?.scrollIntoView(), 40);
-    });
+    return onSnapshot(
+      q,
+      (s) => {
+        setListenerError("");
+        setMessages(
+          s.docs.map((d) => ({ id: d.id, ...d.data() }) as Message).reverse(),
+        );
+        setTimeout(() => bottom.current?.scrollIntoView(), 40);
+      },
+      (error) => {
+        setMessages([]);
+        setListenerError(
+          error.code === "permission-denied"
+            ? "Real-time messages are blocked by the currently deployed Firestore rules. Ask a Firebase project owner to publish the repository rules."
+            : "The real-time message connection could not be opened.",
+        );
+      },
+    );
   }, [companyId, selected]);
   const filtered = useMemo(
     () =>
@@ -277,6 +290,11 @@ export function DiscussWorkspace({
               </div>
             </header>
             <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-8">
+              {listenerError && (
+                <div className="mx-auto mb-5 max-w-2xl rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600">
+                  {listenerError}
+                </div>
+              )}
               <ActiveMeetingCard companyId={companyId} conversationId={active.id} title={conversationName(active,members,userId)} />
               {messages.length ? (
                 messages.map((m, i) => (

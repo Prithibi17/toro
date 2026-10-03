@@ -36,6 +36,7 @@ export function ActiveMeetingCard({
         const r = await fetch(`/api/companies/${companyId}/calls/${id}`);
         if (r.ok) setCall((await r.json()).call);
       },
+      () => setCall(null),
     );
   }, [companyId, conversationId]);
   if (!call || !["creating", "ringing", "active"].includes(call.status))

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
-import { requireMembership } from "@/lib/session";
+import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { canAccessConversation } from "@/lib/discuss-access";
 const input = z.object({
@@ -13,8 +13,9 @@ export async function POST(
   { params }: { params: Promise<{ companyId: string }> },
 ) {
   const { companyId } = await params;
-  const ctx = await requireMembership(companyId);
-  if (!ctx) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await authorizeCompany(companyId, { module: "discuss" });
+  if (!auth.ok) return NextResponse.json({ error: "Access denied" }, { status: authorizationStatus(auth.reason) });
+  const ctx = auth.access;
   try {
     const data = input.parse(await req.json());
     const db = getAdmin().db;
