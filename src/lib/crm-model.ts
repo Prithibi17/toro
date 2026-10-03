@@ -11,6 +11,7 @@ export const CRM_COLLECTIONS = {
   timeline: "crmTimeline",
   notes: "crmNotes",
   customFields: "crmCustomFields",
+  associations: "crmAssociations",
 } as const;
 export const CRM_SECTIONS: CrmSection[] = [
   "overview",
@@ -120,6 +121,22 @@ export const activityInput = z.object({
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
   outcome: text(1000),
+});
+export const leadConversionInput = z.object({
+  contactId: id.nullable().default(null),
+  organizationId: id.nullable().default(null),
+  createContact: z.boolean().default(true),
+  createOrganization: z.boolean().default(true),
+  createOpportunity: z.boolean().default(true),
+  opportunityTitle: text(160),
+  pipelineId: id.nullable().default(null),
+  stageId: id.nullable().default(null),
+});
+export const opportunityUpdateInput = z.object({
+  stageId: id.optional(),
+  expectedCloseDate: text(30).optional(),
+  probability: z.coerce.number().min(0).max(100).optional(),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
 });
 export const sectionInputs = {
   leads: leadInput,

@@ -11,6 +11,11 @@ import {
   type CrmEntitySection,
 } from "@/lib/crm-model";
 import { getAdmin } from "@/lib/firebase-admin";
+import {
+  crmEntityType,
+  linkedModule,
+  relatedCollection,
+} from "@/lib/crm-workflow";
 import type { CrmScope, CrmSection } from "@/lib/types";
 const defaults: CrmSection[] = [
   "overview",
@@ -183,6 +188,12 @@ export async function GET(
     enabledSections: enabled,
     canCreate:
       crmGrant(access.membership, section as CrmSection, "create") === true,
+    canEdit: ![false, "none"].includes(
+      crmGrant(access.membership, section as CrmSection, "edit"),
+    ),
+    canMoveStage:
+      section === "opportunities" &&
+      crmGrant(access.membership, "opportunities", "moveStage") === true,
   });
 }
 export async function POST(
@@ -217,6 +228,48 @@ export async function POST(
       if (!target.exists || target.data()?.status !== "active")
         return NextResponse.json({ error: "Invalid owner" }, { status: 400 });
     }
+    if (section === "opportunities") {
+      const opportunity = input as z.infer<typeof sectionInputs.opportunities>;
+      const stage = await db
+        .doc(
+          `companies/${companyId}/${CRM_COLLECTIONS.stages}/${opportunity.stageId}`,
+        )
+        .get();
+      if (!stage.exists || stage.data()?.pipelineId !== opportunity.pipelineId)
+        return NextResponse.json(
+          { error: "Select a stage that belongs to this pipeline." },
+          { status: 400 },
+        );
+      for (const [kind, recordId] of [
+        ["contact", opportunity.contactId],
+        ["organization", opportunity.organizationId],
+      ] as const) {
+        if (recordId) {
+          const linked = await db
+            .doc(
+              `companies/${companyId}/${relatedCollection(kind)}/${recordId}`,
+            )
+            .get();
+          if (!linked.exists)
+            return NextResponse.json(
+              { error: `The selected ${kind} does not exist.` },
+              { status: 400 },
+            );
+        }
+      }
+    }
+    if (section === "activities") {
+      const activity = input as z.infer<typeof sectionInputs.activities>;
+      const linkedCollection = relatedCollection(activity.relatedType);
+      const linked = await db
+        .doc(`companies/${companyId}/${linkedCollection}/${activity.relatedId}`)
+        .get();
+      if (!linked.exists)
+        return NextResponse.json(
+          { error: "The related CRM record does not exist." },
+          { status: 400 },
+        );
+    }
     const collection = CRM_COLLECTIONS[section as CrmEntitySection];
     const ref = db.collection(`companies/${companyId}/${collection}`).doc();
     const batch = db.batch();
@@ -250,8 +303,89 @@ export async function POST(
           createdAt: FieldValue.serverTimestamp(),
         });
       });
-    } else batch.create(ref, record);
-    const entityType = section.slice(0, -1);
+    } else {
+      const linkedIds: Record<string, string> = {};
+      if (section === "activities") {
+        const activity = input as z.infer<typeof sectionInputs.activities>;
+        const linkedApp = linkedModule(activity.type);
+        if (linkedApp === "calendar") {
+          const event = db
+            .collection(`companies/${companyId}/calendarEvents`)
+            .doc();
+          linkedIds.calendarEventId = event.id;
+          batch.create(event, {
+            companyId,
+            title: activity.title,
+            subtitle: activity.description,
+            status:
+              activity.status === "scheduled" ? "confirmed" : activity.status,
+            date: activity.dueAt?.slice(0, 10) ?? "",
+            dueAt: activity.dueAt,
+            crmActivityId: ref.id,
+            relatedType: activity.relatedType,
+            relatedId: activity.relatedId,
+            ownerId,
+            creatorId: access.user.uid,
+            createdBy: access.user.uid,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedBy: access.user.uid,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        } else if (linkedApp === "todo") {
+          const task = db.collection(`companies/${companyId}/tasks`).doc();
+          linkedIds.taskId = task.id;
+          const assigneeId = activity.assigneeId || ownerId;
+          batch.create(task, {
+            companyId,
+            title: activity.title,
+            description: activity.description,
+            priority: activity.priority,
+            dueDate: activity.dueAt?.slice(0, 10) ?? "",
+            status: "todo",
+            crmActivityId: ref.id,
+            relatedType: activity.relatedType,
+            relatedId: activity.relatedId,
+            ownerId,
+            creatorId: access.user.uid,
+            creatorName: access.user.name ?? access.user.email ?? "User",
+            assigneeIds: [assigneeId],
+            viewerIds: [],
+            departmentIds: activity.departmentIds,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedBy: access.user.uid,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      batch.create(ref, { ...record, ...linkedIds });
+      if (section === "opportunities") {
+        const opportunity = input as z.infer<
+          typeof sectionInputs.opportunities
+        >;
+        for (const [toType, toId, role] of [
+          ["contact", opportunity.contactId, "primary"],
+          ["organization", opportunity.organizationId, "customer"],
+        ] as const) {
+          if (!toId) continue;
+          const association = db
+            .collection(
+              `companies/${companyId}/${CRM_COLLECTIONS.associations}`,
+            )
+            .doc();
+          batch.create(association, {
+            companyId,
+            fromType: "opportunity",
+            fromId: ref.id,
+            toType,
+            toId,
+            role,
+            createdBy: access.user.uid,
+            createdAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
+    }
+    const entityType = crmEntityType(section)!;
     appendAudit(
       db,
       companyId,

@@ -326,6 +326,7 @@ service cloud.firestore {
       match /crmActivities/{recordId} {
         allow read, write: if false;
       }
+      match /crmAssociations/{recordId} { allow read, write: if false; }
 
       match /crmTimeline/{recordId} { allow read, write: if false; }
       match /crmNotes/{recordId} { allow read, write: if false; }

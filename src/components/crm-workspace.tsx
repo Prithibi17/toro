@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { CrmSection } from "@/lib/types";
 type Item = Record<string, unknown> & { id: string };
+type Pipeline = Item & { stages: Item[] };
 const labels: Record<CrmSection, string> = {
   overview: "Overview",
   leads: "Leads",
@@ -35,9 +36,14 @@ export function CrmWorkspace({
     [records, setRecords] = useState<Item[]>([]),
     [metrics, setMetrics] = useState<Record<string, number>>({}),
     [canCreate, setCanCreate] = useState(false),
+    [canEdit, setCanEdit] = useState(false),
+    [canMoveStage, setCanMoveStage] = useState(false),
+    [pipelines, setPipelines] = useState<Pipeline[]>([]),
     [loading, setLoading] = useState(true),
     [open, setOpen] = useState(false),
     [settings, setSettings] = useState(false),
+    [historyRecord, setHistoryRecord] = useState<Item | null>(null),
+    [history, setHistory] = useState<Item[]>([]),
     [query, setQuery] = useState(""),
     [error, setError] = useState("");
   const load = useCallback(async () => {
@@ -50,12 +56,20 @@ export function CrmWorkspace({
       setRecords(j.records ?? []);
       setMetrics(j.metrics ?? {});
       setCanCreate(Boolean(j.canCreate));
+      setCanEdit(Boolean(j.canEdit));
+      setCanMoveStage(Boolean(j.canMoveStage));
     } else setError(j.error ?? "Could not load CRM");
     setLoading(false);
   }, [companyId, section]);
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (!enabled.includes("pipelines")) return;
+    void fetch(`/api/companies/${companyId}/crm/pipelines`)
+      .then((r) => (r.ok ? r.json() : { records: [] }))
+      .then((j) => setPipelines(j.records ?? []));
+  }, [companyId, enabled]);
   const visible = useMemo(
     () =>
       records.filter((r) =>
@@ -97,6 +111,56 @@ export function CrmWorkspace({
       setSettings(false);
       await load();
     } else setError((await r.json()).error);
+  }
+  async function convertLead(record: Item) {
+    const pipeline = pipelines[0],
+      stage = pipeline?.stages?.find((s) => s.stageType === "OPEN");
+    if (!pipeline || !stage) {
+      setError(
+        "Create an active pipeline with an open stage before converting a lead.",
+      );
+      return;
+    }
+    const r = await fetch(
+      `/api/companies/${companyId}/crm/leads/${record.id}/convert`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          createContact: true,
+          createOrganization: Boolean(record.organizationName),
+          createOpportunity: true,
+          opportunityTitle: String(record.name ?? "New opportunity"),
+          pipelineId: pipeline.id,
+          stageId: stage.id,
+        }),
+      },
+    );
+    const j = await r.json();
+    if (r.ok) await load();
+    else setError(j.error ?? "Could not convert lead");
+  }
+  async function moveOpportunity(recordId: string, stageId: string) {
+    const r = await fetch(
+      `/api/companies/${companyId}/crm/opportunities/${recordId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stageId }),
+      },
+    );
+    if (r.ok) await load();
+    else setError((await r.json()).error ?? "Could not move opportunity");
+  }
+  async function openHistory(record: Item) {
+    setHistoryRecord(record);
+    setHistory([]);
+    const r = await fetch(
+      `/api/companies/${companyId}/crm/${section}/${record.id}/timeline`,
+    );
+    const j = await r.json();
+    if (r.ok) setHistory(j.events ?? []);
+    else setError(j.error ?? "Could not load record history");
   }
   return (
     <>
@@ -164,7 +228,17 @@ export function CrmWorkspace({
             />
             <Filter size={17} className="muted" />
           </div>
-          <RecordList section={section} records={visible} currency={currency} />
+          <RecordList
+            section={section}
+            records={visible}
+            currency={currency}
+            pipelines={pipelines}
+            canEdit={canEdit}
+            canMoveStage={canMoveStage}
+            convertLead={convertLead}
+            moveOpportunity={moveOpportunity}
+            openHistory={openHistory}
+          />
         </>
       )}
       {open && (
@@ -172,7 +246,12 @@ export function CrmWorkspace({
           title={`New ${labels[section].replace(/s$/, "")}`}
           close={() => setOpen(false)}
         >
-          <EntityForm section={section} currency={currency} submit={create} />
+          <EntityForm
+            section={section}
+            currency={currency}
+            pipelines={pipelines}
+            submit={create}
+          />
         </Modal>
       )}
       {settings && (
@@ -204,6 +283,30 @@ export function CrmWorkspace({
           >
             Save CRM sections
           </button>
+        </Modal>
+      )}
+      {historyRecord && (
+        <Modal title="Record history" close={() => setHistoryRecord(null)}>
+          <div className="space-y-3">
+            {history.map((event) => (
+              <article
+                key={event.id}
+                className="rounded-xl bg-[var(--soft)] p-3"
+              >
+                <p className="font-semibold">
+                  {String(event.eventType ?? "updated").replaceAll("_", " ")}
+                </p>
+                <p className="mt-1 text-xs muted">
+                  {event.timestamp
+                    ? new Date(String(event.timestamp)).toLocaleString()
+                    : "Pending timestamp"}
+                </p>
+              </article>
+            ))}
+            {!history.length && (
+              <p className="text-sm muted">No history recorded yet.</p>
+            )}
+          </div>
         </Modal>
       )}
     </>
@@ -247,10 +350,22 @@ function RecordList({
   section,
   records,
   currency,
+  pipelines,
+  canEdit,
+  canMoveStage,
+  convertLead,
+  moveOpportunity,
+  openHistory,
 }: {
   section: CrmSection;
   records: Item[];
   currency: string;
+  pipelines: Pipeline[];
+  canEdit: boolean;
+  canMoveStage: boolean;
+  convertLead: (record: Item) => void;
+  moveOpportunity: (recordId: string, stageId: string) => void;
+  openHistory: (record: Item) => void;
 }) {
   if (!records.length)
     return (
@@ -297,6 +412,40 @@ function RecordList({
                   }).format(Number(r.value))}
                 </p>
               )}
+              {section === "leads" &&
+                canEdit &&
+                String(r.status).toLowerCase() !== "converted" && (
+                  <button
+                    className="btn btn-secondary mt-4"
+                    onClick={() => convertLead(r)}
+                  >
+                    Convert to opportunity
+                  </button>
+                )}
+              {section === "opportunities" && canMoveStage && (
+                <select
+                  aria-label="Opportunity stage"
+                  className="input mt-4 !py-2 text-sm"
+                  value={String(r.stageId ?? "")}
+                  onChange={(e) => moveOpportunity(r.id, e.target.value)}
+                >
+                  {pipelines
+                    .find((p) => p.id === r.pipelineId)
+                    ?.stages.map((stage) => (
+                      <option key={stage.id} value={stage.id}>
+                        {String(stage.name)}
+                      </option>
+                    ))}
+                </select>
+              )}
+              {section !== "pipelines" && (
+                <button
+                  className="mt-4 text-sm font-semibold text-[var(--accent)]"
+                  onClick={() => openHistory(r)}
+                >
+                  View history
+                </button>
+              )}
             </div>
           </div>
         </article>
@@ -307,10 +456,12 @@ function RecordList({
 function EntityForm({
   section,
   currency,
+  pipelines,
   submit,
 }: {
   section: CrmSection;
   currency: string;
+  pipelines: Pipeline[];
   submit: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
@@ -402,12 +553,28 @@ function EntityForm({
           </label>
           <input type="hidden" name="currency" value={currency} />
           <label>
-            <span className="label">Pipeline ID</span>
-            <input className="input" name="pipelineId" required />
+            <span className="label">Pipeline</span>
+            <select className="input" name="pipelineId" required>
+              <option value="">Select pipeline</option>
+              {pipelines.map((pipeline) => (
+                <option key={pipeline.id} value={pipeline.id}>
+                  {String(pipeline.name)}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
-            <span className="label">Stage ID</span>
-            <input className="input" name="stageId" required />
+            <span className="label">Initial stage</span>
+            <select className="input" name="stageId" required>
+              <option value="">Select stage</option>
+              {pipelines.flatMap((pipeline) =>
+                pipeline.stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {String(pipeline.name)} — {String(stage.name)}
+                  </option>
+                )),
+              )}
+            </select>
           </label>
         </>
       )}
