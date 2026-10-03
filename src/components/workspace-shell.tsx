@@ -50,12 +50,16 @@ export function WorkspaceShell({
   companyName,
   role,
   modules,
+  canManageMembers,
+  canManageApps,
   children,
 }: {
   companyId: string;
   companyName: string;
   role: string;
   modules: ModuleKey[];
+  canManageMembers: boolean;
+  canManageApps: boolean;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -67,17 +71,27 @@ export function WorkspaceShell({
       label: "Overview",
       icon: <LayoutDashboard size={18} />,
     },
-    { href: `${base}/apps`, label: "Apps", icon: <Grid2X2 size={18} /> },
-    {
-      href: `${base}/employees`,
-      label: "Employees",
-      icon: <Users size={18} />,
-    },
-    {
-      href: `${base}/settings`,
-      label: "Settings",
-      icon: <Settings size={18} />,
-    },
+    ...(canManageApps
+      ? [{ href: `${base}/apps`, label: "Apps", icon: <Grid2X2 size={18} /> }]
+      : []),
+    ...(canManageMembers
+      ? [
+          {
+            href: `${base}/employees`,
+            label: "Employees",
+            icon: <Users size={18} />,
+          },
+        ]
+      : []),
+    ...(canManageMembers || canManageApps
+      ? [
+          {
+            href: `${base}/settings`,
+            label: "Settings",
+            icon: <Settings size={18} />,
+          },
+        ]
+      : []),
   ];
   return (
     <div className="min-h-screen md:grid md:grid-cols-[248px_1fr]">

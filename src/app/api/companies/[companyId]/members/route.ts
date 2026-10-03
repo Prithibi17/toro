@@ -30,9 +30,18 @@ const input = z.object({
   email: z.string().email(),
   displayName: z.string().trim().min(2).max(100),
   role: z.enum(["admin", "manager", "employee", "intern"]),
+  userType: z.enum(["internal", "portal"]).default("internal"),
+  roleIds: z.array(z.string().min(1)).max(20).default([]),
   departmentIds: z.array(z.string()).max(10),
   permissions: z.array(z.enum(keys)).max(keys.length),
   crmPermissions: z.record(z.string(), crmSection).default({}),
+});
+const updateInput = z.object({
+  userId: z.string().min(1),
+  role: z.enum(["admin", "manager", "employee", "intern"]).optional(),
+  roleIds: z.array(z.string().min(1)).max(20).optional(),
+  status: z.enum(["active", "suspended"]).optional(),
+  accessExpiresAt: z.string().datetime().nullable().optional(),
 });
 export async function POST(
   req: Request,
@@ -59,6 +68,30 @@ export async function POST(
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
     const { auth, db } = getAdmin();
+    const roleDocuments = await Promise.all(
+      data.roleIds.map((id) =>
+        db.doc(`companies/${companyId}/roles/${id}`).get(),
+      ),
+    );
+    if (
+      roleDocuments.some(
+        (role) => !role.exists || role.data()?.active === false,
+      )
+    ) {
+      return NextResponse.json(
+        { error: "One or more roles are invalid" },
+        { status: 400 },
+      );
+    }
+    const assignsSecurity = roleDocuments.some(
+      (role) => role.data()?.actions?.["security.roles.manage"] === true,
+    );
+    if (ctx.membership.role !== "owner" && assignsSecurity) {
+      return NextResponse.json(
+        { error: "Only the company owner can assign security administration" },
+        { status: 403 },
+      );
+    }
     let target;
     try {
       target = await auth.getUserByEmail(data.email);
@@ -82,6 +115,9 @@ export async function POST(
           companyId,
           companyName: company.name,
           role: data.role,
+          userType: data.userType,
+          roleIds: data.roleIds,
+          permissionVersion: 1,
           status: "active",
           departmentIds: data.departmentIds,
           permissions,
@@ -131,6 +167,7 @@ export async function POST(
       email: data.email.toLowerCase(),
       permissions,
       status: "pending",
+      permissionVersion: 1,
       createdBy: ctx.user.uid,
       createdAt: FieldValue.serverTimestamp(),
       expiresAt: new Date(Date.now() + 7 * 86400000),
@@ -158,6 +195,124 @@ export async function POST(
             : e instanceof Error
               ? e.message
               : "Could not add member",
+      },
+      { status: 400 },
+    );
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ companyId: string }> },
+) {
+  const { companyId } = await params;
+  const authz = await authorizeCompany(companyId, {
+    permission: "members.manage",
+  });
+  if (!authz.ok)
+    return NextResponse.json(
+      { error: "Access denied" },
+      { status: authorizationStatus(authz.reason) },
+    );
+  try {
+    const data = updateInput.parse(await req.json());
+    const db = getAdmin().db;
+    const memberRef = db.doc(`companies/${companyId}/members/${data.userId}`);
+    const target = await memberRef.get();
+    if (!target.exists)
+      return NextResponse.json({ error: "Member not found" }, { status: 404 });
+    const current = target.data()!;
+    if (
+      authz.access.membership.role !== "owner" &&
+      (current.role === "owner" ||
+        current.role === "admin" ||
+        data.role === "admin")
+    )
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    if (
+      current.role === "owner" &&
+      (data.status === "suspended" || (data.role && data.role !== "admin"))
+    ) {
+      const administrators = await db
+        .collection(`companies/${companyId}/members`)
+        .where("status", "==", "active")
+        .where("role", "in", ["owner", "admin"])
+        .get();
+      if (administrators.size <= 1)
+        return NextResponse.json(
+          { error: "The last company administrator cannot be removed" },
+          { status: 409 },
+        );
+    }
+    if (data.roleIds) {
+      const roleDocuments = await Promise.all(
+        data.roleIds.map((id) =>
+          db.doc(`companies/${companyId}/roles/${id}`).get(),
+        ),
+      );
+      if (
+        roleDocuments.some(
+          (role) => !role.exists || role.data()?.active === false,
+        )
+      )
+        return NextResponse.json(
+          { error: "One or more roles are invalid" },
+          { status: 400 },
+        );
+      if (
+        authz.access.membership.role !== "owner" &&
+        roleDocuments.some(
+          (role) => role.data()?.actions?.["security.roles.manage"] === true,
+        )
+      )
+        return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    }
+    const update = {
+      ...(data.role ? { role: data.role } : {}),
+      ...(data.roleIds ? { roleIds: data.roleIds } : {}),
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.accessExpiresAt !== undefined
+        ? {
+            accessExpiresAt: data.accessExpiresAt
+              ? new Date(data.accessExpiresAt)
+              : FieldValue.delete(),
+          }
+        : {}),
+      permissionVersion: FieldValue.increment(1),
+      updatedBy: authz.access.user.uid,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    const batch = db.batch();
+    batch.update(memberRef, update);
+    batch.set(
+      db.doc(`users/${data.userId}/companyMemberships/${companyId}`),
+      update,
+      { merge: true },
+    );
+    appendAudit(
+      db,
+      companyId,
+      {
+        actorId: authz.access.user.uid,
+        action:
+          data.status === "suspended"
+            ? "security.member.suspended"
+            : "security.member.access_updated",
+        entityType: "member",
+        entityId: data.userId,
+        metadata: { permissionVersionChanged: true },
+      },
+      batch,
+    );
+    await batch.commit();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof z.ZodError
+            ? "Invalid request"
+            : "Could not update member access",
       },
       { status: 400 },
     );

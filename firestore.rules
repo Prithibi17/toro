@@ -22,7 +22,11 @@ service cloud.firestore {
 
     function isActiveMember(companyId) {
       return isMember(companyId)
-        && get(memberPath(companyId, request.auth.uid)).data.status == "active";
+        && get(memberPath(companyId, request.auth.uid)).data.status == "active"
+        && (
+          !get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(["userType"])
+          || get(memberPath(companyId, request.auth.uid)).data.userType == "internal"
+        );
     }
 
     function conversationAccess(companyId, channelId) {
@@ -120,8 +124,13 @@ service cloud.firestore {
        */
       match /roles/{roleId} {
         allow read: if isActiveMember(companyId);
-        allow create, update, delete: if isCompanyAdmin(companyId);
+        allow create, update, delete: if false;
       }
+
+      match /permissionGroups/{groupId} { allow read, write: if false; }
+      match /recordRules/{ruleId} { allow read, write: if false; }
+      match /approvalPolicies/{policyId} { allow read, write: if false; }
+      match /serviceAccounts/{serviceAccountId} { allow read, write: if false; }
 
       /*
        * Invitations are managed by trusted server operations.

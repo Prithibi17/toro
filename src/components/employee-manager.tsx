@@ -10,6 +10,7 @@ type Member = {
   status: string;
 };
 type Department = { id: string; name: string };
+type CompanyRole = { id: string; name: string; description?: string };
 const permissionOptions: {
   key: PermissionKey;
   label: string;
@@ -67,12 +68,14 @@ export function EmployeeManager({
   initialMembers,
   departments,
   pending,
+  roles,
 }: {
   companyId: string;
   isOwner: boolean;
   initialMembers: Member[];
   departments: Department[];
   pending: number;
+  roles: CompanyRole[];
 }) {
   const [members] = useState(initialMembers);
   const [open, setOpen] = useState(false);
@@ -87,6 +90,8 @@ export function EmployeeManager({
       email: f.get("email"),
       displayName: f.get("displayName"),
       role: f.get("role"),
+      userType: f.get("userType"),
+      roleIds: f.getAll("roleIds"),
       departmentIds: f.getAll("departmentIds"),
       permissions: f.getAll("permissions"),
       crmPermissions: Object.fromEntries(
@@ -200,6 +205,13 @@ export function EmployeeManager({
                 <input className="input" name="email" type="email" required />
               </label>
               <label>
+                <span className="label">User type</span>
+                <select className="input" name="userType">
+                  <option value="internal">Internal user</option>
+                  <option value="portal">Portal user</option>
+                </select>
+              </label>
+              <label>
                 <span className="label">Role</span>
                 <select className="input" name="role">
                   <option value="employee">Employee</option>
@@ -208,6 +220,27 @@ export function EmployeeManager({
                   <option value="admin">Company admin</option>
                 </select>
               </label>
+              <fieldset>
+                <legend className="label">Enterprise roles</legend>
+                <div className="max-h-28 space-y-2 overflow-auto rounded-xl border border-[var(--border)] p-3">
+                  {roles.map((role) => (
+                    <label className="flex gap-2 text-sm" key={role.id}>
+                      <input type="checkbox" name="roleIds" value={role.id} />
+                      <span>
+                        <b className="block">{role.name}</b>
+                        {role.description && (
+                          <small className="muted">{role.description}</small>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                  {!roles.length && (
+                    <span className="text-sm muted">
+                      No custom roles configured
+                    </span>
+                  )}
+                </div>
+              </fieldset>
               <fieldset>
                 <legend className="label">Departments</legend>
                 <div className="max-h-28 space-y-2 overflow-auto rounded-xl border border-[var(--border)] p-3">

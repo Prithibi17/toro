@@ -5,12 +5,18 @@ import type {
   Membership,
   PermissionKey,
 } from "./types";
+import {
+  effectivePermissions,
+  legacyPermissionAllowed,
+} from "./permission-engine";
 export function hasPermission(
   membership: Membership,
   permission: PermissionKey,
 ) {
-  return (
-    membership.role === "owner" || membership.permissions?.[permission] === true
+  return legacyPermissionAllowed(
+    membership,
+    effectivePermissions(membership),
+    permission,
   );
 }
 export function isCompanyAdministrator(membership: Membership) {
@@ -49,6 +55,24 @@ export function crmGrant(
     return ["view", "edit", "delete", "assign"].includes(action) ? "all" : true;
   const override = membership.crmPermissions?.[section]?.[action];
   if (override !== undefined) return override;
+  const resource =
+    membership.resourcePermissions?.[
+      `crm.${section === "organizations" ? "organization" : section.replace(/s$/, "")}`
+    ];
+  const actionKey = `crm.${section}.${action}`;
+  if (["view", "edit", "delete"].includes(action)) {
+    const operation =
+      action === "view" ? "read" : action === "edit" ? "write" : "delete";
+    if (resource?.[operation] === true) {
+      const scope = resource.scope;
+      if (scope === "company") return "all";
+      if (scope === "department") return "department";
+      if (["own", "assigned", "own_assigned", "team"].includes(scope ?? ""))
+        return "own";
+    }
+  }
+  if (action === "create" && resource?.create === true) return true;
+  if (membership.actionPermissions?.[actionKey] === true) return true;
   if (
     membership.permissions?.["crm.manage"] === true ||
     membership.role === "admin"

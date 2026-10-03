@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Building2, Mail, ShieldCheck, Users } from "lucide-react";
 import { MODULES, type ModuleKey } from "@/lib/types";
-import { requireMembership } from "@/lib/session";
+import { authorizeCompany } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { OperationalModule } from "@/components/operational-module";
 import { ContactsWorkspace } from "@/components/contacts-workspace";
@@ -14,17 +14,41 @@ export default async function ModulePage({
   params: Promise<{ companyId: string; module: string }>;
 }) {
   const { companyId, module } = await params;
-  const ctx = await requireMembership(companyId);
-  if (!ctx) notFound();
-  if (module === "apps")
+  const moduleKey = MODULES.find((item) => item.key === module)?.key;
+  const authz = await authorizeCompany(
+    companyId,
+    moduleKey ? { module: moduleKey } : {},
+  );
+  if (!authz.ok) notFound();
+  const ctx = authz.access;
+  if (
+    module === "apps" &&
+    (ctx.membership.role === "owner" ||
+      ctx.effectivePermissions.actions["security.apps.manage"] ||
+      ctx.effectivePermissions.legacyPermissions["apps.manage"])
+  )
     return (
       <Apps
         companyId={companyId}
         enabled={ctx.membership.enabledModules || []}
       />
     );
-  if (module === "employees") return <Employees companyId={companyId} />;
-  if (module === "settings") return <Settings companyId={companyId} />;
+  if (
+    module === "employees" &&
+    (ctx.membership.role === "owner" ||
+      ctx.effectivePermissions.actions["security.members.manage"] ||
+      ctx.effectivePermissions.legacyPermissions["members.manage"])
+  )
+    return <Employees companyId={companyId} />;
+  if (
+    module === "settings" &&
+    (ctx.membership.role === "owner" ||
+      ctx.effectivePermissions.actions["security.members.manage"] ||
+      ctx.effectivePermissions.actions["security.apps.manage"] ||
+      ctx.effectivePermissions.legacyPermissions["members.manage"] ||
+      ctx.effectivePermissions.legacyPermissions["apps.manage"])
+  )
+    return <Settings companyId={companyId} />;
   if (module === "dashboards") return <Dashboard companyId={companyId} />;
   if (
     module === "contacts" &&

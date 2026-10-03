@@ -15,6 +15,7 @@ export type ModuleKey =
   | "barcode";
 export type PermissionKey =
   | "members.manage"
+  | "security.manage"
   | "apps.manage"
   | "tasks.create"
   | "tasks.move"
@@ -22,6 +23,40 @@ export type PermissionKey =
   | "crm.manage"
   | "contacts.manage"
   | "sales.manage";
+export type UserType = "internal" | "portal" | "service";
+export type AppAccessLevel =
+  "none" | "user" | "manager" | "administrator" | "custom";
+export type ResourceOperation = "read" | "create" | "write" | "delete";
+export type RecordScope =
+  | "none"
+  | "own"
+  | "assigned"
+  | "own_assigned"
+  | "team"
+  | "department"
+  | "company";
+export type ResourcePermission = Partial<Record<ResourceOperation, boolean>> & {
+  scope?: RecordScope;
+};
+export type FieldPermission = {
+  read?: boolean;
+  write?: boolean;
+  mask?: boolean;
+};
+export type RoleDefinition = {
+  id: string;
+  name: string;
+  description?: string;
+  system?: boolean;
+  active?: boolean;
+  inheritedRoleIds?: string[];
+  appAccess?: Partial<Record<ModuleKey, AppAccessLevel>>;
+  resources?: Record<string, ResourcePermission>;
+  actions?: Record<string, boolean>;
+  fields?: Record<string, Record<string, FieldPermission>>;
+  legacyPermissions?: Partial<Record<PermissionKey, boolean>>;
+  approvalLimits?: Record<string, number>;
+};
 export type CrmSection =
   | "overview"
   | "leads"
@@ -49,6 +84,14 @@ export type Membership = {
   companyLogo?: string;
   role: "owner" | "admin" | "manager" | "employee" | "intern";
   status: "active" | "invited" | "suspended";
+  userType?: UserType;
+  roleIds?: string[];
+  appAccess?: Partial<Record<ModuleKey, AppAccessLevel>>;
+  resourcePermissions?: Record<string, ResourcePermission>;
+  actionPermissions?: Record<string, boolean>;
+  fieldPermissions?: Record<string, Record<string, FieldPermission>>;
+  permissionVersion?: number;
+  accessExpiresAt?: { toDate(): Date } | Date | string;
   enabledModules: ModuleKey[];
   departmentIds?: string[];
   permissions?: Partial<Record<PermissionKey, boolean>>;
