@@ -38,42 +38,43 @@ export async function GET(
     );
   const ctx = auth.access;
   const db = getAdmin().db;
-  const [channels, members, departments, readStates] = await Promise.all([
+  const [channels, members, departments] = await Promise.all([
     db.collection(`companies/${companyId}/channels`).get(),
     db
       .collection(`companies/${companyId}/members`)
       .where("status", "==", "active")
       .get(),
     db.collection(`companies/${companyId}/departments`).get(),
-    db.collectionGroup("readStates").where("userId", "==", ctx.user.uid).get(),
   ]);
-  const unreadByChannel = new Map(
-    readStates.docs
-      .filter((document) =>
-        document.ref.path.startsWith(`companies/${companyId}/channels/`),
-      )
-      .map((document) => [
-        document.ref.parent.parent?.id,
-        Number(document.data().unreadCount || 0),
-      ]),
+  const accessibleChannels = channels.docs.filter((d) =>
+    canAccessConversation(ctx.user.uid, ctx.membership, d.data()),
   );
-  const conversations = channels.docs
-    .filter((d) =>
-      canAccessConversation(ctx.user.uid, ctx.membership, d.data()),
-    )
-    .map((d) => {
-      const x = d.data();
-      return {
-        id: d.id,
-        name: String(x.name || x.title || "Untitled channel"),
-        description: String(x.description || x.subtitle || ""),
-        type: String(x.type || "public"),
-        memberIds: Array.isArray(x.memberIds) ? x.memberIds : [],
-        lastMessage: String(x.lastMessage || ""),
-        unreadBy: Array.isArray(x.unreadBy) ? x.unreadBy : [],
-        unreadCount: unreadByChannel.get(d.id) || 0,
-      };
-    });
+  const readStates = accessibleChannels.length
+    ? await db.getAll(
+        ...accessibleChannels.map((channel) =>
+          channel.ref.collection("readStates").doc(ctx.user.uid),
+        ),
+      )
+    : [];
+  const unreadByChannel = new Map(
+    readStates.map((document) => [
+      document.ref.parent.parent?.id,
+      Number(document.data()?.unreadCount || 0),
+    ]),
+  );
+  const conversations = accessibleChannels.map((d) => {
+    const x = d.data();
+    return {
+      id: d.id,
+      name: String(x.name || x.title || "Untitled channel"),
+      description: String(x.description || x.subtitle || ""),
+      type: String(x.type || "public"),
+      memberIds: Array.isArray(x.memberIds) ? x.memberIds : [],
+      lastMessage: String(x.lastMessage || ""),
+      unreadBy: Array.isArray(x.unreadBy) ? x.unreadBy : [],
+      unreadCount: unreadByChannel.get(d.id) || 0,
+    };
+  });
   return NextResponse.json({
     conversations,
     members: members.docs.map((d) => ({
