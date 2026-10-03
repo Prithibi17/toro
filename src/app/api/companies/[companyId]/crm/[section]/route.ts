@@ -349,7 +349,7 @@ export async function POST(
             updatedBy: access.user.uid,
             updatedAt: FieldValue.serverTimestamp(),
           });
-        } else if (linkedApp === "todo") {
+        } else if (linkedApp === "todo" && activity.relatedType !== "task") {
           const task = db.collection(`companies/${companyId}/tasks`).doc();
           linkedIds.taskId = task.id;
           const assigneeId = activity.assigneeId || ownerId;

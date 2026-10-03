@@ -1,8 +1,252 @@
 "use client";
-import { useEffect, useState } from "react";
-import { Calendar, CheckCircle2, CirclePlus, LoaderCircle, X } from "lucide-react";
-
-type Status="todo"|"in-progress"|"review"|"done";
-type Task={id:string;title:string;description:string;priority:"low"|"medium"|"high"|"urgent";dueDate:string;status:Status;creatorName?:string};
-const columns:{key:Status;label:string}[]=[{key:"todo",label:"To Do"},{key:"in-progress",label:"In Progress"},{key:"review",label:"Review"},{key:"done",label:"Done"}];
-export function TaskBoard({companyId}:{companyId:string}){const[tasks,setTasks]=useState<Task[]>([]);const[loading,setLoading]=useState(true);const[open,setOpen]=useState(false);const[error,setError]=useState("");async function load(){setLoading(true);const r=await fetch(`/api/companies/${companyId}/tasks`);const j=await r.json();if(r.ok)setTasks(j.tasks);else setError(j.error);setLoading(false)}useEffect(()=>{load()},[]);async function create(e:React.FormEvent<HTMLFormElement>){e.preventDefault();const form=new FormData(e.currentTarget);const body=Object.fromEntries(form);const r=await fetch(`/api/companies/${companyId}/tasks`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const j=await r.json();if(r.ok){setOpen(false);await load()}else setError(j.error)}async function move(id:string,status:Status){const previous=tasks;setTasks(x=>x.map(t=>t.id===id?{...t,status}:t));const r=await fetch(`/api/companies/${companyId}/tasks/${id}`,{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({status})});if(!r.ok){setTasks(previous);setError((await r.json()).error)}}return <><div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-sm font-semibold text-[var(--accent)]">Work management</p><h1 className="mt-1 text-3xl font-extrabold">To-Do</h1><p className="mt-2 muted">Plan work, move it forward, and complete reviews.</p></div><button className="btn btn-primary" onClick={()=>setOpen(true)}><CirclePlus size={18}/>Add task</button></div>{error&&<div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">{error}</div>}{loading?<div className="grid min-h-80 place-items-center"><LoaderCircle className="animate-spin muted"/></div>:<div className="grid gap-4 xl:grid-cols-4">{columns.map(c=><section key={c.key} className="rounded-2xl bg-[var(--soft)] p-3"><header className="mb-3 flex items-center justify-between px-1"><b>{c.label}</b><span className="rounded-full bg-[var(--panel)] px-2 py-0.5 text-xs muted">{tasks.filter(t=>t.status===c.key).length}</span></header><div className="space-y-3">{tasks.filter(t=>t.status===c.key).map(t=><article key={t.id} className="panel p-4"><div className="flex items-start justify-between gap-3"><h3 className="font-bold leading-5">{t.title}</h3><span className={`h-2.5 w-2.5 shrink-0 rounded-full ${t.priority==='urgent'?'bg-red-500':t.priority==='high'?'bg-orange-500':t.priority==='medium'?'bg-blue-500':'bg-slate-400'}`}/></div>{t.description&&<p className="mt-2 line-clamp-2 text-sm muted">{t.description}</p>}{t.dueDate&&<p className="mt-3 flex items-center gap-1.5 text-xs muted"><Calendar size={13}/>{t.dueDate}</p>}<select aria-label="Task status" className="input mt-4 !py-2 text-xs" value={t.status} onChange={e=>move(t.id,e.target.value as Status)}>{columns.map(x=><option key={x.key} value={x.key}>{x.label}</option>)}</select></article>)}{!tasks.some(t=>t.status===c.key)&&<div className="rounded-xl border border-dashed border-[var(--border)] p-6 text-center text-sm muted">No tasks</div>}</div></section>)}</div>}{open&&<div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"><form onSubmit={create} className="panel w-full max-w-lg p-6"><div className="flex items-center justify-between"><div><h2 className="text-xl font-extrabold">Create task</h2><p className="mt-1 text-sm muted">Add real work to this company.</p></div><button type="button" onClick={()=>setOpen(false)}><X/></button></div><div className="mt-6 space-y-4"><label><span className="label">Title</span><input className="input" name="title" required minLength={2}/></label><label><span className="label">Description</span><textarea className="input min-h-24" name="description"/></label><div className="grid grid-cols-2 gap-4"><label><span className="label">Priority</span><select className="input" name="priority" defaultValue="medium"><option>low</option><option>medium</option><option>high</option><option>urgent</option></select></label><label><span className="label">Due date</span><input className="input" type="date" name="dueDate"/></label></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" className="btn btn-secondary" onClick={()=>setOpen(false)}>Cancel</button><button className="btn btn-primary"><CheckCircle2 size={17}/>Create task</button></div></form></div>}</>}
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Calendar,
+  ChevronDown,
+  CirclePlus,
+  LoaderCircle,
+  Search,
+} from "lucide-react";
+type Task = {
+  id: string;
+  title: string;
+  description?: string;
+  priority: string;
+  dueDate?: string;
+  stageId: string;
+  completedAt?: string;
+};
+type Stage = {
+  id: string;
+  name: string;
+  sequence: number;
+  isDone?: boolean;
+  isFolded?: boolean;
+};
+export function TaskBoard({ companyId }: { companyId: string }) {
+  const router = useRouter(),
+    [tasks, setTasks] = useState<Task[]>([]),
+    [stages, setStages] = useState<Stage[]>([]),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [query, setQuery] = useState(""),
+    [adding, setAdding] = useState<string | null>(null),
+    [newStage, setNewStage] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await fetch(`/api/companies/${companyId}/tasks`),
+      j = await r.json();
+    if (r.ok) {
+      setTasks(j.tasks ?? []);
+      setStages(j.stages ?? []);
+    } else setError(j.error);
+    setLoading(false);
+  }, [companyId]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const visible = useMemo(
+    () =>
+      tasks.filter((t) =>
+        (t.title + " " + (t.description || ""))
+          .toLowerCase()
+          .includes(query.toLowerCase()),
+      ),
+    [tasks, query],
+  );
+  async function create(e: React.FormEvent<HTMLFormElement>, stageId: string) {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.currentTarget));
+    body.stageId = stageId;
+    const r = await fetch(`/api/companies/${companyId}/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (r.ok) {
+      setAdding(null);
+      await load();
+    } else setError((await r.json()).error);
+  }
+  async function move(id: string, stageId: string) {
+    const before = tasks;
+    setTasks((x) => x.map((t) => (t.id === id ? { ...t, stageId } : t)));
+    const r = await fetch(`/api/companies/${companyId}/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stageId }),
+    });
+    if (!r.ok) {
+      setTasks(before);
+      setError((await r.json()).error);
+    } else await load();
+  }
+  async function addStage(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const r = await fetch(`/api/companies/${companyId}/todo-stages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(new FormData(e.currentTarget))),
+    });
+    if (r.ok) {
+      setNewStage(false);
+      await load();
+    } else setError((await r.json()).error);
+  }
+  const overdue = (t: Task) =>
+    Boolean(
+      t.dueDate &&
+      !t.completedAt &&
+      new Date(t.dueDate) < new Date(new Date().toDateString()),
+    );
+  return (
+    <>
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-extrabold">My To-Do</h1>
+          <button
+            className="btn btn-primary !py-2"
+            onClick={() => setAdding(stages[0]?.id ?? null)}
+          >
+            <CirclePlus size={16} />
+            New
+          </button>
+        </div>
+        <div className="flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
+          <Search size={16} />
+          <input
+            className="w-full bg-transparent py-2.5 text-sm outline-none"
+            placeholder="Search To-Dos"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+      </header>
+      {error && (
+        <p className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-500">
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <div className="grid min-h-80 place-items-center">
+          <LoaderCircle className="animate-spin" />
+        </div>
+      ) : (
+        <div className="flex min-h-[70vh] gap-4 overflow-x-auto pb-4">
+          {stages.map((stage) => (
+            <section
+              key={stage.id}
+              className="w-80 shrink-0 bg-[var(--soft)] p-3"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                const id = e.dataTransfer.getData("text/plain");
+                if (id) void move(id, stage.id);
+              }}
+            >
+              <header className="mb-3 flex items-center justify-between px-1">
+                <b className="uppercase text-sm">{stage.name}</b>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-[var(--panel)] px-2 text-xs">
+                    {visible.filter((t) => t.stageId === stage.id).length}
+                  </span>
+                  <ChevronDown size={15} className="muted" />
+                </div>
+              </header>
+              <div className="space-y-2">
+                {visible
+                  .filter((t) => t.stageId === stage.id)
+                  .map((t) => (
+                    <article
+                      key={t.id}
+                      draggable
+                      onDragStart={(e) =>
+                        e.dataTransfer.setData("text/plain", t.id)
+                      }
+                      onClick={() =>
+                        router.push(`/workspace/${companyId}/todo/${t.id}`)
+                      }
+                      className="panel cursor-pointer p-4"
+                    >
+                      <div className="flex justify-between gap-2">
+                        <b>{t.title}</b>
+                        <i
+                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${t.priority === "urgent" ? "bg-red-500" : t.priority === "high" ? "bg-orange-500" : "bg-slate-400"}`}
+                        />
+                      </div>
+                      {t.description && (
+                        <p className="mt-2 line-clamp-2 text-sm muted">
+                          {t.description}
+                        </p>
+                      )}
+                      {t.dueDate && (
+                        <p
+                          className={`mt-3 flex items-center gap-1 text-xs ${overdue(t) ? "text-red-500" : "muted"}`}
+                        >
+                          <Calendar size={13} />
+                          {overdue(t) ? "Overdue · " : ""}
+                          {t.dueDate}
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                {adding === stage.id ? (
+                  <form
+                    className="panel p-3"
+                    onSubmit={(e) => create(e, stage.id)}
+                  >
+                    <input
+                      className="input !py-2"
+                      name="title"
+                      autoFocus
+                      placeholder="What needs to be done?"
+                      required
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button className="btn btn-primary !py-1.5">Add</button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary !py-1.5"
+                        onClick={() => setAdding(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <button
+                    className="w-full border border-dashed border-[var(--border)] p-3 text-sm font-semibold muted"
+                    onClick={() => setAdding(stage.id)}
+                  >
+                    + Add
+                  </button>
+                )}
+              </div>
+            </section>
+          ))}
+          <section className="w-72 shrink-0">
+            {newStage ? (
+              <form className="panel p-3" onSubmit={addStage}>
+                <input
+                  className="input"
+                  name="name"
+                  autoFocus
+                  placeholder="Stage name"
+                  required
+                />
+                <button className="btn btn-primary mt-2">Add Stage</button>
+              </form>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                onClick={() => setNewStage(true)}
+              >
+                + Personal Stage
+              </button>
+            )}
+          </section>
+        </div>
+      )}
+    </>
+  );
+}

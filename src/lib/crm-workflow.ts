@@ -12,6 +12,7 @@ export function relatedCollection(type: string) {
     contact: "contacts",
     organization: "contacts",
     opportunity: "crmOpportunities",
+    task: "tasks",
   }[type];
 }
 

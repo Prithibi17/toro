@@ -205,6 +205,8 @@ service cloud.firestore {
             && resource.data.senderId == request.auth.uid;
         }
       }
+      match /todoStages/{stageId} { allow read, write: if false; }
+      match /todoHistory/{eventId} { allow read, write: if false; }
 
       /*
        * Discussions and channel messages
