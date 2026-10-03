@@ -15,10 +15,14 @@ import {
   LoaderCircle,
   MessageCircle,
   Paperclip,
+  Pin,
   Plus,
+  Reply,
   Search,
   Send,
   Smile,
+  Star,
+  CheckSquare2,
   X,
 } from "lucide-react";
 import { clientDb, clientStorage } from "@/lib/firebase-client";
@@ -32,6 +36,7 @@ type Conversation = {
   memberIds?: string[];
   lastMessage?: string;
   unreadBy?: string[];
+  unreadCount?: number;
 };
 type Member = { id: string; displayName: string; email: string; role: string };
 type Department = { id: string; name: string };
@@ -42,6 +47,11 @@ type Message = {
   senderName: string;
   createdAt?: { toDate: () => Date };
   attachment?: { name: string; url: string; type: string; size: number };
+  parentMessageId?: string | null;
+  reactions?: Record<string, string[]>;
+  pinned?: boolean;
+  editedAt?: { toDate: () => Date } | null;
+  deletedAt?: { toDate: () => Date } | null;
 };
 export function DiscussWorkspace({
   companyId,
@@ -50,6 +60,8 @@ export function DiscussWorkspace({
   members,
   departments,
   isAdmin,
+  initialConversationId,
+  initialMessageId,
 }: {
   companyId: string;
   userId: string;
@@ -57,10 +69,14 @@ export function DiscussWorkspace({
   members: Member[];
   departments: Department[];
   isAdmin: boolean;
+  initialConversationId?: string;
+  initialMessageId?: string;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
   const [selected, setSelected] = useState(
-    initialConversations.find((c) => c.name.toLowerCase() === "general")?.id ||
+    initialConversationId ||
+      initialConversations.find((c) => c.name.toLowerCase() === "general")
+        ?.id ||
       initialConversations[0]?.id ||
       "",
   );
@@ -78,6 +94,9 @@ export function DiscussWorkspace({
   const [sending, setSending] = useState(false);
   const [listenerError, setListenerError] = useState("");
   const [mobileChat, setMobileChat] = useState(false);
+  const [details, setDetails] = useState(false);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const nonce = useRef(crypto.randomUUID());
   const bottom = useRef<HTMLDivElement>(null);
   const active = conversations.find((c) => c.id === selected);
   useEffect(() => {
@@ -113,6 +132,34 @@ export function DiscussWorkspace({
       },
     );
   }, [companyId, selected]);
+  useEffect(() => {
+    if (
+      !initialMessageId ||
+      !messages.some((message) => message.id === initialMessageId)
+    )
+      return;
+    document
+      .getElementById(`message-${initialMessageId}`)
+      ?.scrollIntoView({ block: "center" });
+  }, [initialMessageId, messages]);
+  useEffect(() => {
+    if (!selected) return;
+    fetch(`/api/companies/${companyId}/discuss/${selected}/read`, {
+      method: "PATCH",
+    }).then(() =>
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === selected
+            ? {
+                ...conversation,
+                unreadBy: conversation.unreadBy?.filter((id) => id !== userId),
+                unreadCount: 0,
+              }
+            : conversation,
+        ),
+      ),
+    );
+  }, [companyId, selected, userId, messages.length]);
   const filtered = useMemo(
     () =>
       conversations.filter((c) =>
@@ -130,15 +177,39 @@ export function DiscussWorkspace({
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content: text, attachment: upload }),
+        body: JSON.stringify({
+          content: text,
+          attachment: upload,
+          clientNonce: nonce.current,
+          parentMessageId: replyTo?.id ?? null,
+        }),
       },
     );
     if (r.ok) {
       setText("");
       setUpload(null);
       setProgress(0);
+      setReplyTo(null);
+      nonce.current = crypto.randomUUID();
     }
     setSending(false);
+  }
+  async function messageAction(
+    message: Message,
+    body: Record<string, unknown>,
+  ) {
+    const response = await fetch(
+      `/api/companies/${companyId}/discuss/${selected}/messages/${message.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!response.ok) {
+      const result = await response.json();
+      setListenerError(result.error || "Message action failed");
+    }
   }
   async function filePicked(file?: File) {
     if (!file || !clientStorage) return;
@@ -219,7 +290,7 @@ export function DiscussWorkspace({
             action={isAdmin ? () => setModal("channel") : undefined}
           />
           {filtered
-            .filter((c) => c.type !== "dm")
+            .filter((c) => !["dm", "group"].includes(c.type))
             .map((c) => (
               <ConversationRow
                 key={c.id}
@@ -235,7 +306,7 @@ export function DiscussWorkspace({
             ))}
           <Section title="Direct Messages" action={() => setModal("dm")} />
           {filtered
-            .filter((c) => c.type === "dm")
+            .filter((c) => ["dm", "group"].includes(c.type))
             .map((c) => (
               <ConversationRow
                 key={c.id}
@@ -264,7 +335,7 @@ export function DiscussWorkspace({
                 <ArrowLeft />
               </button>
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--soft)]">
-                {active.type === "dm" ? (
+                {["dm", "group"].includes(active.type) ? (
                   <MessageCircle size={18} />
                 ) : (
                   <Hash size={18} />
@@ -279,11 +350,22 @@ export function DiscussWorkspace({
                 </p>
               </div>
               <div className="ml-auto flex gap-1">
-                <CallLauncher companyId={companyId} conversationId={active.id} title={conversationName(active,members,userId)} type="audio" />
-                <CallLauncher companyId={companyId} conversationId={active.id} title={conversationName(active,members,userId)} type="video" />
+                <CallLauncher
+                  companyId={companyId}
+                  conversationId={active.id}
+                  title={conversationName(active, members, userId)}
+                  type="audio"
+                />
+                <CallLauncher
+                  companyId={companyId}
+                  conversationId={active.id}
+                  title={conversationName(active, members, userId)}
+                  type="video"
+                />
                 <button
                   className="btn btn-secondary !p-2.5"
                   title="Conversation info"
+                  onClick={() => setDetails((value) => !value)}
                 >
                   <Info size={17} />
                 </button>
@@ -295,7 +377,11 @@ export function DiscussWorkspace({
                   {listenerError}
                 </div>
               )}
-              <ActiveMeetingCard companyId={companyId} conversationId={active.id} title={conversationName(active,members,userId)} />
+              <ActiveMeetingCard
+                companyId={companyId}
+                conversationId={active.id}
+                title={conversationName(active, members, userId)}
+              />
               {messages.length ? (
                 messages.map((m, i) => (
                   <MessageBubble
@@ -303,6 +389,12 @@ export function DiscussWorkspace({
                     message={m}
                     mine={m.senderId === userId}
                     grouped={i > 0 && messages[i - 1].senderId === m.senderId}
+                    parent={messages.find(
+                      (candidate) => candidate.id === m.parentMessageId,
+                    )}
+                    onReply={() => setReplyTo(m)}
+                    onAction={(body) => messageAction(m, body)}
+                    highlighted={m.id === initialMessageId}
                   />
                 ))
               ) : (
@@ -321,6 +413,16 @@ export function DiscussWorkspace({
               <div ref={bottom} />
             </div>
             <div className="border-t border-[var(--border)] bg-[var(--panel)] p-3 sm:p-4">
+              {replyTo && (
+                <div className="mb-2 flex items-center justify-between rounded-xl bg-[var(--soft)] px-3 py-2 text-sm">
+                  <span className="truncate">
+                    <b>Replying to {replyTo.senderName}</b> · {replyTo.content}
+                  </span>
+                  <button onClick={() => setReplyTo(null)}>
+                    <X size={15} />
+                  </button>
+                </div>
+              )}
               {upload && (
                 <div className="mb-2 flex items-center justify-between rounded-xl bg-[var(--soft)] p-2 text-sm">
                   <span>📎 {upload.name}</span>
@@ -393,6 +495,73 @@ export function DiscussWorkspace({
           </div>
         )}
       </section>
+      {details && active && (
+        <aside className="hidden w-[300px] shrink-0 overflow-y-auto border-l border-[var(--border)] bg-[var(--panel)] p-5 xl:block">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold">Conversation details</h3>
+            <button onClick={() => setDetails(false)}>
+              <X size={17} />
+            </button>
+          </div>
+          <p className="mt-2 text-sm leading-6 muted">
+            {active.description || "No description"}
+          </p>
+          <h4 className="mt-6 text-xs font-bold uppercase tracking-wider muted">
+            Members
+          </h4>
+          <div className="mt-2 space-y-2">
+            {(active.memberIds || []).map((id) => {
+              const member = members.find((candidate) => candidate.id === id);
+              return (
+                <div
+                  key={id}
+                  className="rounded-lg bg-[var(--soft)] px-3 py-2 text-sm"
+                >
+                  {member?.displayName || "Former user"}
+                </div>
+              );
+            })}
+          </div>
+          <h4 className="mt-6 text-xs font-bold uppercase tracking-wider muted">
+            Pinned messages
+          </h4>
+          <div className="mt-2 space-y-2">
+            {messages
+              .filter((message) => message.pinned)
+              .map((message) => (
+                <div
+                  key={message.id}
+                  className="rounded-lg border border-[var(--border)] p-3 text-sm"
+                >
+                  {message.content || "Attachment"}
+                </div>
+              ))}
+            {!messages.some((message) => message.pinned) && (
+              <p className="text-sm muted">No pinned messages.</p>
+            )}
+          </div>
+          <h4 className="mt-6 text-xs font-bold uppercase tracking-wider muted">
+            Files
+          </h4>
+          <div className="mt-2 space-y-2">
+            {messages
+              .filter((message) => message.attachment)
+              .map((message) => (
+                <a
+                  key={message.id}
+                  href={message.attachment!.url}
+                  target="_blank"
+                  className="block truncate rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--accent)]"
+                >
+                  {message.attachment!.name}
+                </a>
+              ))}
+            {!messages.some((message) => message.attachment) && (
+              <p className="text-sm muted">No files shared.</p>
+            )}
+          </div>
+        </aside>
+      )}
       {modal && (
         <ConversationModal
           mode={modal}
@@ -430,14 +599,18 @@ function ConversationRow({
   onClick: () => void;
   userId: string;
 }) {
-  const unread = c.unreadBy?.includes(userId);
+  const unread = c.unreadCount || (c.unreadBy?.includes(userId) ? 1 : 0);
   return (
     <button
       onClick={onClick}
       className={`my-1 flex w-full items-center gap-3 rounded-xl p-3 text-left ${active ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--soft)]"}`}
     >
       <span className="grid h-8 w-8 place-items-center rounded-lg bg-black/5">
-        {c.type === "dm" ? <MessageCircle size={16} /> : <Hash size={16} />}
+        {["dm", "group"].includes(c.type) ? (
+          <MessageCircle size={16} />
+        ) : (
+          <Hash size={16} />
+        )}
       </span>
       <span className="min-w-0 flex-1">
         <b className="block truncate text-sm">{name}</b>
@@ -447,7 +620,11 @@ function ConversationRow({
           {c.lastMessage || c.description || "No messages yet"}
         </small>
       </span>
-      {unread && <i className="h-2.5 w-2.5 rounded-full bg-orange-400" />}
+      {unread > 0 && (
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white">
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
     </button>
   );
 }
@@ -460,13 +637,24 @@ function MessageBubble({
   message: m,
   mine,
   grouped,
+  parent,
+  onReply,
+  onAction,
+  highlighted,
 }: {
   message: Message;
   mine: boolean;
   grouped: boolean;
+  parent?: Message;
+  onReply: () => void;
+  onAction: (body: Record<string, unknown>) => void;
+  highlighted: boolean;
 }) {
   return (
-    <div className={`flex gap-3 ${grouped ? "mt-1" : "mt-5"}`}>
+    <div
+      id={`message-${m.id}`}
+      className={`flex gap-3 rounded-lg transition ${grouped ? "mt-1" : "mt-5"} ${highlighted ? "bg-orange-500/10 ring-1 ring-orange-500/30" : ""}`}
+    >
       <div className="w-9 shrink-0">
         {!grouped && (
           <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--accent)] text-sm font-bold text-white">
@@ -488,12 +676,22 @@ function MessageBubble({
             </>
           )}
         </div>
-        {m.content && (
-          <p
-            className={`mt-1 inline-block rounded-2xl px-4 py-2 text-sm leading-6 ${mine ? "bg-orange-500/10" : "bg-[var(--panel)]"}`}
-          >
-            {m.content}
-          </p>
+        {parent && (
+          <div className="mt-1 border-l-2 border-[var(--accent)] pl-3 text-xs muted">
+            <b>{parent.senderName}</b> · {parent.content || "Attachment"}
+          </div>
+        )}
+        {m.deletedAt ? (
+          <p className="mt-1 text-sm italic muted">This message was deleted.</p>
+        ) : (
+          m.content && (
+            <p
+              className={`mt-1 inline-block rounded-2xl px-4 py-2 text-sm leading-6 ${mine ? "bg-orange-500/10" : "bg-[var(--panel)]"}`}
+            >
+              {m.content}
+              {m.editedAt && <small className="ml-2 muted">Edited</small>}
+            </p>
+          )
         )}
         {m.attachment && (
           <a
@@ -503,6 +701,55 @@ function MessageBubble({
           >
             📎 {m.attachment.name}
           </a>
+        )}
+        {!m.deletedAt && (
+          <div className="mt-1 flex flex-wrap items-center gap-1 opacity-70 hover:opacity-100">
+            <button
+              className="rounded p-1 hover:bg-[var(--soft)]"
+              title="Reply"
+              onClick={onReply}
+            >
+              <Reply size={14} />
+            </button>
+            <button
+              className="rounded p-1 hover:bg-[var(--soft)]"
+              title="React"
+              onClick={() => onAction({ action: "react", reaction: "👍" })}
+            >
+              <Smile size={14} />
+            </button>
+            <button
+              className="rounded p-1 hover:bg-[var(--soft)]"
+              title="Star for later"
+              onClick={() => onAction({ action: "star", starred: true })}
+            >
+              <Star size={14} />
+            </button>
+            <button
+              className="rounded p-1 hover:bg-[var(--soft)]"
+              title="Pin"
+              onClick={() => onAction({ action: "pin", pinned: !m.pinned })}
+            >
+              <Pin size={14} />
+            </button>
+            <button
+              className="rounded p-1 hover:bg-[var(--soft)]"
+              title="Create To-Do"
+              onClick={() => onAction({ action: "createTodo" })}
+            >
+              <CheckSquare2 size={14} />
+            </button>
+            {Object.entries(m.reactions || {}).map(([reaction, users]) =>
+              users.length ? (
+                <span
+                  key={reaction}
+                  className="rounded-full bg-[var(--soft)] px-2 py-0.5 text-xs"
+                >
+                  {reaction} {users.length}
+                </span>
+              ) : null,
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -522,6 +769,8 @@ function ConversationModal({
   onCreate: (x: object) => void;
 }) {
   const [q, setQ] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [groupName, setGroupName] = useState("");
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
       <div className="panel w-full max-w-lg p-6">
@@ -549,11 +798,21 @@ function ConversationModal({
                     .includes(q.toLowerCase()),
                 )
                 .map((m) => (
-                  <button
+                  <label
                     className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-[var(--soft)]"
                     key={m.id}
-                    onClick={() => onCreate({ kind: "dm", targetUserId: m.id })}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedMembers.includes(m.id)}
+                      onChange={(event) =>
+                        setSelectedMembers((current) =>
+                          event.target.checked
+                            ? [...current, m.id]
+                            : current.filter((id) => id !== m.id),
+                        )
+                      }
+                    />
                     <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--accent)] font-bold text-white">
                       {m.displayName[0]}
                     </span>
@@ -561,9 +820,38 @@ function ConversationModal({
                       <b className="block text-sm">{m.displayName}</b>
                       <small className="muted">{m.email}</small>
                     </span>
-                  </button>
+                  </label>
                 ))}
             </div>
+            {selectedMembers.length > 1 && (
+              <input
+                className="input mt-3"
+                placeholder="Group conversation name"
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+              />
+            )}
+            <button
+              className="btn btn-primary mt-4 w-full"
+              disabled={
+                !selectedMembers.length ||
+                (selectedMembers.length > 1 && groupName.trim().length < 2)
+              }
+              onClick={() =>
+                selectedMembers.length === 1
+                  ? onCreate({ kind: "dm", targetUserId: selectedMembers[0] })
+                  : onCreate({
+                      kind: "group",
+                      name: groupName,
+                      description: "",
+                      memberIds: selectedMembers,
+                    })
+              }
+            >
+              {selectedMembers.length > 1
+                ? "Create group conversation"
+                : "Open conversation"}
+            </button>
           </>
         ) : (
           <form

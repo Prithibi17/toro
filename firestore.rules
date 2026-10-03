@@ -228,11 +228,15 @@ service cloud.firestore {
         match /messages/{messageId} {
           allow read: if conversationAccess(companyId, channelId);
 
-          allow create: if isActiveMember(companyId)
-            && request.resource.data.authorId == request.auth.uid;
+          allow create, update, delete: if false;
 
-          allow update, delete: if isActiveMember(companyId)
-            && resource.data.authorId == request.auth.uid;
+          match /stars/{userId} {
+            allow read, write: if false;
+          }
+        }
+
+        match /readStates/{userId} {
+          allow read, write: if false;
         }
       }
 

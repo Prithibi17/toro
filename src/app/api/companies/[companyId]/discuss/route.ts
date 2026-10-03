@@ -3,7 +3,10 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
-import { canAccessConversation } from "@/lib/discuss-access";
+import {
+  canAccessConversation,
+  canonicalDirectMessageId,
+} from "@/lib/discuss-access";
 const create = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("channel"),
@@ -15,6 +18,12 @@ const create = z.discriminatedUnion("kind", [
     projectId: z.string().default(""),
   }),
   z.object({ kind: z.literal("dm"), targetUserId: z.string().min(1) }),
+  z.object({
+    kind: z.literal("group"),
+    name: z.string().trim().min(2).max(80),
+    description: z.string().trim().max(300).default(""),
+    memberIds: z.array(z.string().min(1)).min(2).max(30),
+  }),
 ]);
 export async function GET(
   _: Request,
@@ -22,17 +31,32 @@ export async function GET(
 ) {
   const { companyId } = await params;
   const auth = await authorizeCompany(companyId, { module: "discuss" });
-  if (!auth.ok) return NextResponse.json({ error: "Access denied" }, { status: authorizationStatus(auth.reason) });
+  if (!auth.ok)
+    return NextResponse.json(
+      { error: "Access denied" },
+      { status: authorizationStatus(auth.reason) },
+    );
   const ctx = auth.access;
   const db = getAdmin().db;
-  const [channels, members, departments] = await Promise.all([
+  const [channels, members, departments, readStates] = await Promise.all([
     db.collection(`companies/${companyId}/channels`).get(),
     db
       .collection(`companies/${companyId}/members`)
       .where("status", "==", "active")
       .get(),
     db.collection(`companies/${companyId}/departments`).get(),
+    db.collectionGroup("readStates").where("userId", "==", ctx.user.uid).get(),
   ]);
+  const unreadByChannel = new Map(
+    readStates.docs
+      .filter((document) =>
+        document.ref.path.startsWith(`companies/${companyId}/channels/`),
+      )
+      .map((document) => [
+        document.ref.parent.parent?.id,
+        Number(document.data().unreadCount || 0),
+      ]),
+  );
   const conversations = channels.docs
     .filter((d) =>
       canAccessConversation(ctx.user.uid, ctx.membership, d.data()),
@@ -47,6 +71,7 @@ export async function GET(
         memberIds: Array.isArray(x.memberIds) ? x.memberIds : [],
         lastMessage: String(x.lastMessage || ""),
         unreadBy: Array.isArray(x.unreadBy) ? x.unreadBy : [],
+        unreadCount: unreadByChannel.get(d.id) || 0,
       };
     });
   return NextResponse.json({
@@ -69,7 +94,11 @@ export async function POST(
 ) {
   const { companyId } = await params;
   const auth = await authorizeCompany(companyId, { module: "discuss" });
-  if (!auth.ok) return NextResponse.json({ error: "Access denied" }, { status: authorizationStatus(auth.reason) });
+  if (!auth.ok)
+    return NextResponse.json(
+      { error: "Access denied" },
+      { status: authorizationStatus(auth.reason) },
+    );
   const ctx = auth.access;
   try {
     const data = create.parse(await req.json());
@@ -86,7 +115,7 @@ export async function POST(
           { status: 404 },
         );
       const ids = [ctx.user.uid, data.targetUserId].sort();
-      const id = `dm_${ids.join("_")}`;
+      const id = canonicalDirectMessageId(ctx.user.uid, data.targetUserId);
       const ref = db.doc(`companies/${companyId}/channels/${id}`);
       if (!(await ref.get()).exists)
         await ref.create({
@@ -108,7 +137,43 @@ export async function POST(
         },
       });
     }
-    if (ctx.membership.role !== "owner" && ctx.membership.role !== "admin")
+    if (data.kind === "group") {
+      const memberIds = Array.from(new Set([ctx.user.uid, ...data.memberIds]));
+      const memberDocuments = await Promise.all(
+        memberIds.map((id) =>
+          db.doc(`companies/${companyId}/members/${id}`).get(),
+        ),
+      );
+      if (
+        memberDocuments.some(
+          (member) => !member.exists || member.data()?.status !== "active",
+        )
+      )
+        return NextResponse.json(
+          { error: "One or more members are unavailable" },
+          { status: 400 },
+        );
+      const ref = db.collection(`companies/${companyId}/channels`).doc();
+      await ref.create({
+        name: data.name,
+        description: data.description,
+        type: "group",
+        memberIds,
+        createdBy: ctx.user.uid,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        lastMessage: "",
+        unreadBy: [],
+      });
+      return NextResponse.json(
+        { conversation: { id: ref.id, ...data, type: "group", memberIds } },
+        { status: 201 },
+      );
+    }
+    if (
+      ctx.membership.role !== "owner" &&
+      ctx.membership.actionPermissions?.["discuss.channel.manage"] !== true
+    )
       return NextResponse.json(
         { error: "Only owners and admins can create channels" },
         { status: 403 },

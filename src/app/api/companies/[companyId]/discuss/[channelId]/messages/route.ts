@@ -3,10 +3,19 @@ import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
-import { canAccessConversation } from "@/lib/discuss-access";
+import { canAccessConversation, messageMentions } from "@/lib/discuss-access";
 const input = z
   .object({
     content: z.string().trim().max(5000).default(""),
+    clientNonce: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]{8,100}$/)
+      .optional(),
+    parentMessageId: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]{1,160}$/)
+      .nullable()
+      .default(null),
     attachment: z
       .object({
         name: z.string(),
@@ -24,7 +33,11 @@ export async function POST(
 ) {
   const { companyId, channelId } = await params;
   const auth = await authorizeCompany(companyId, { module: "discuss" });
-  if (!auth.ok) return NextResponse.json({ error: "Access denied" }, { status: authorizationStatus(auth.reason) });
+  if (!auth.ok)
+    return NextResponse.json(
+      { error: "Access denied" },
+      { status: authorizationStatus(auth.reason) },
+    );
   const ctx = auth.access;
   try {
     const db = getAdmin().db;
@@ -39,43 +52,84 @@ export async function POST(
         { status: 403 },
       );
     const data = input.parse(await req.json());
-    const messageRef = channelRef.collection("messages").doc();
+    const messageRef = data.clientNonce
+      ? channelRef
+          .collection("messages")
+          .doc(`nonce_${ctx.user.uid}_${data.clientNonce}`)
+      : channelRef.collection("messages").doc();
     const recipients = (channel.data()?.memberIds || []).filter(
       (id: string) => id !== ctx.user.uid,
     );
-    const batch = db.batch();
-    batch.create(messageRef, {
-      ...data,
-      senderId: ctx.user.uid,
-      senderName: ctx.user.name || ctx.user.email || "User",
-      createdAt: FieldValue.serverTimestamp(),
-      edited: false,
-      reactions: {},
-    });
-    batch.update(channelRef, {
-      lastMessage: data.content || `Attachment: ${data.attachment?.name}`,
-      lastMessageAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      unreadBy: FieldValue.arrayUnion(...recipients),
-    });
-    for (const uid of recipients) {
-      const n = db.collection(`companies/${companyId}/notifications`).doc();
-      batch.create(n, {
-        companyId,
-        recipientId: uid,
-        eventType: "discuss.message",
-        title:
-          channel.data()?.type === "dm"
-            ? `Message from ${ctx.user.name || ctx.user.email}`
-            : `New message in #${channel.data()?.name}`,
-        message: data.content.slice(0, 140),
-        relatedRecord: { type: "channel", id: channelId },
-        read: false,
+    const mentions = messageMentions(data.content).filter((uid) =>
+      recipients.includes(uid),
+    );
+    const created = await db.runTransaction(async (tx) => {
+      const existing = await tx.get(messageRef);
+      if (existing.exists) return false;
+      if (data.parentMessageId) {
+        const parent = await tx.get(
+          channelRef.collection("messages").doc(data.parentMessageId),
+        );
+        if (!parent.exists) throw new Error("Reply target not found");
+      }
+      tx.create(messageRef, {
+        content: data.content,
+        attachment: data.attachment,
+        parentMessageId: data.parentMessageId,
+        clientNonce: data.clientNonce ?? null,
+        senderId: ctx.user.uid,
+        senderName: ctx.user.name || ctx.user.email || "User",
+        mentionIds: mentions,
         createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        editedAt: null,
+        deletedAt: null,
+        reactions: {},
+        pinned: false,
       });
-    }
-    await batch.commit();
-    return NextResponse.json({ id: messageRef.id }, { status: 201 });
+      tx.update(channelRef, {
+        lastMessage: data.content || `Attachment: ${data.attachment?.name}`,
+        lastMessageId: messageRef.id,
+        lastMessageAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(recipients.length
+          ? { unreadBy: FieldValue.arrayUnion(...recipients) }
+          : {}),
+      });
+      for (const uid of recipients) {
+        tx.set(
+          channelRef.collection("readStates").doc(uid),
+          { userId: uid, unreadCount: FieldValue.increment(1) },
+          { merge: true },
+        );
+        const n = db.collection(`companies/${companyId}/notifications`).doc();
+        tx.create(n, {
+          companyId,
+          recipientId: uid,
+          eventType: mentions.includes(uid)
+            ? "discuss.mention"
+            : "discuss.message",
+          title: mentions.includes(uid)
+            ? `${ctx.user.name || ctx.user.email || "A member"} mentioned you`
+            : channel.data()?.type === "dm"
+              ? `Message from ${ctx.user.name || ctx.user.email}`
+              : `New message in #${channel.data()?.name}`,
+          message: data.content.slice(0, 140),
+          relatedRecord: {
+            type: "channel",
+            id: channelId,
+            messageId: messageRef.id,
+          },
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+      return true;
+    });
+    return NextResponse.json(
+      { id: messageRef.id, duplicate: !created },
+      { status: created ? 201 : 200 },
+    );
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Could not send message" },
