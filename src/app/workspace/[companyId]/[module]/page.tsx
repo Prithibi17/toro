@@ -6,6 +6,7 @@ import { requireMembership } from "@/lib/session";
 import { getAdmin } from "@/lib/firebase-admin";
 import { OperationalModule } from "@/components/operational-module";
 import { ContactsWorkspace } from "@/components/contacts-workspace";
+import { CalendarWorkspace } from "@/components/calendar-workspace";
 
 export default async function ModulePage({
   params,
@@ -30,6 +31,17 @@ export default async function ModulePage({
     ctx.membership.enabledModules?.includes("contacts")
   )
     return <ContactsWorkspace companyId={companyId} />;
+  if (
+    module === "calendar" &&
+    ctx.membership.enabledModules?.includes("calendar")
+  )
+    return (
+      <CalendarWorkspace
+        companyId={companyId}
+        userId={ctx.user.uid}
+        userName={ctx.user.name ?? ctx.user.email ?? "My Calendar"}
+      />
+    );
   const found = MODULES.find((m) => m.key === module);
   if (!found || !ctx.membership.enabledModules?.includes(found.key)) notFound();
   return <OperationalModule companyId={companyId} module={module} />;
