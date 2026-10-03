@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   CalendarClock,
   CirclePlus,
@@ -24,6 +25,9 @@ export function CrmWorkspace({
   companyId: string;
   currency: string;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const customerFilter = searchParams.get("customerId");
   const [screen, setScreen] = useState<Screen>("pipeline"),
     [records, setRecords] = useState<Item[]>([]),
     [stages, setStages] = useState<Item[]>([]),
@@ -33,10 +37,7 @@ export function CrmWorkspace({
     [loading, setLoading] = useState(true),
     [query, setQuery] = useState(""),
     [error, setError] = useState(""),
-    [createStage, setCreateStage] = useState<string | null>(null),
-    [historyRecord, setHistoryRecord] = useState<Item | null>(null),
-    [history, setHistory] = useState<Item[]>([]),
-    [activityTarget, setActivityTarget] = useState<Item | null>(null);
+    [createStage, setCreateStage] = useState<string | null>(null);
   const section = screen === "pipeline" ? "opportunities" : screen;
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,10 +66,11 @@ export function CrmWorkspace({
     () =>
       records.filter(
         (r) =>
-          !query ||
-          JSON.stringify(r).toLowerCase().includes(query.toLowerCase()),
+          (!customerFilter || r.customerId === customerFilter) &&
+          (!query ||
+            JSON.stringify(r).toLowerCase().includes(query.toLowerCase())),
       ),
-    [records, query],
+    [customerFilter, records, query],
   );
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -102,37 +104,6 @@ export function CrmWorkspace({
       setRecords(before);
       setError((await r.json()).error);
     } else await load();
-  }
-  async function openHistory(record: Item) {
-    setHistoryRecord(record);
-    setHistory([]);
-    const r = await fetch(
-        `/api/companies/${companyId}/crm/opportunities/${record.id}/timeline`,
-      ),
-      j = await r.json();
-    if (r.ok) setHistory(j.events ?? []);
-    else setError(j.error);
-  }
-  async function createActivity(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!activityTarget) return;
-    const body: Record<string, unknown> = Object.fromEntries(
-      new FormData(event.currentTarget),
-    );
-    body.relatedType = "opportunity";
-    body.relatedId = activityTarget.id;
-    body.dueAt = body.dueAt ? new Date(String(body.dueAt)).toISOString() : null;
-    const response = await fetch(`/api/companies/${companyId}/crm/activities`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await response.json();
-    if (response.ok) {
-      setActivityTarget(null);
-      setHistoryRecord(null);
-      await load();
-    } else setError(data.error ?? "Could not schedule activity");
   }
   const firstStage = String(
     stages.find((s) => s.stageType === "OPEN")?.id ?? stages[0]?.id ?? "",
@@ -196,7 +167,11 @@ export function CrmWorkspace({
           canMove={canMove}
           add={setCreateStage}
           move={move}
-          open={openHistory}
+          open={(record) =>
+            router.push(
+              `/workspace/${companyId}/crm/opportunities/${record.id}`,
+            )
+          }
         />
       ) : (
         <Table screen={screen} records={visible} currency={currency} />
@@ -230,84 +205,6 @@ export function CrmWorkspace({
             <input type="hidden" name="stageId" value={createStage} />
             <input type="hidden" name="currency" value={currency} />
             <button className="btn btn-primary w-full">Add opportunity</button>
-          </form>
-        </Modal>
-      )}
-      {historyRecord && (
-        <Modal
-          title={String(historyRecord.name ?? "Opportunity history")}
-          close={() => setHistoryRecord(null)}
-        >
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 rounded-xl bg-[var(--soft)] p-4 text-sm">
-              <span className="muted">Expected revenue</span>
-              <b>
-                {new Intl.NumberFormat(undefined, {
-                  style: "currency",
-                  currency,
-                  maximumFractionDigits: 0,
-                }).format(Number(historyRecord.value || 0))}
-              </b>
-              <span className="muted">Probability</span>
-              <b>{Number(historyRecord.probability || 0)}%</b>
-            </div>
-            <button
-              className="btn btn-primary w-full"
-              onClick={() => setActivityTarget(historyRecord)}
-            >
-              <CalendarClock size={16} />
-              Schedule next activity
-            </button>
-            {history.map((e) => (
-              <article key={e.id} className="rounded-xl bg-[var(--soft)] p-3">
-                <p className="font-semibold capitalize">
-                  {String(e.eventType ?? "updated").replaceAll("_", " ")}
-                </p>
-                <p className="mt-1 text-xs muted">
-                  {e.timestamp
-                    ? new Date(String(e.timestamp)).toLocaleString()
-                    : "Pending timestamp"}
-                </p>
-              </article>
-            ))}
-            {!history.length && (
-              <p className="text-sm muted">No history yet.</p>
-            )}
-          </div>
-        </Modal>
-      )}
-      {activityTarget && (
-        <Modal title="Schedule activity" close={() => setActivityTarget(null)}>
-          <form className="space-y-4" onSubmit={createActivity}>
-            <Field label="Activity type">
-              <select className="input" name="type">
-                <option value="call">Call</option>
-                <option value="meeting">Meeting</option>
-                <option value="email">Email</option>
-                <option value="follow-up">Follow-up</option>
-                <option value="task">Task</option>
-              </select>
-            </Field>
-            <Field label="Title">
-              <input
-                className="input"
-                name="title"
-                required
-                defaultValue={`Follow up ${String(activityTarget.name ?? "")}`}
-              />
-            </Field>
-            <Field label="Due">
-              <input
-                className="input"
-                name="dueAt"
-                type="datetime-local"
-                required
-              />
-            </Field>
-            <Field label="Notes">
-              <textarea className="input min-h-20" name="description" />
-            </Field>
-            <button className="btn btn-primary w-full">Schedule</button>
           </form>
         </Modal>
       )}
