@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, Mail, ShieldCheck, Users } from "lucide-react";
+import { Mail, ShieldCheck, Users } from "lucide-react";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { authorizeCompany } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
@@ -40,15 +40,6 @@ export default async function ModulePage({
       ctx.effectivePermissions.legacyPermissions["members.manage"])
   )
     return <Employees companyId={companyId} />;
-  if (
-    module === "settings" &&
-    (ctx.membership.role === "owner" ||
-      ctx.effectivePermissions.actions["security.members.manage"] ||
-      ctx.effectivePermissions.actions["security.apps.manage"] ||
-      ctx.effectivePermissions.legacyPermissions["members.manage"] ||
-      ctx.effectivePermissions.legacyPermissions["apps.manage"])
-  )
-    return <Settings companyId={companyId} />;
   if (module === "dashboards") return <Dashboard companyId={companyId} />;
   if (
     module === "contacts" &&
@@ -193,63 +184,6 @@ async function Employees({ companyId }: { companyId: string }) {
         {members.empty && (
           <p className="p-8 text-center muted">No memberships found.</p>
         )}
-      </div>
-    </>
-  );
-}
-
-async function Settings({ companyId }: { companyId: string }) {
-  const doc = await getAdmin().db.doc(`companies/${companyId}`).get();
-  if (!doc.exists) notFound();
-  const c = doc.data()!;
-  const fields = [
-    ["Company name", c.name],
-    ["Business category", c.businessCategory],
-    ["Country", c.country],
-    ["City", c.city || "—"],
-    ["Currency", c.currency],
-    ["Time zone", c.timezone],
-  ];
-  return (
-    <>
-      <Heading
-        title="Company settings"
-        description="The live configuration stored for this workspace."
-      />
-      <div className="grid gap-6 lg:grid-cols-[1fr_.7fr]">
-        <section className="panel p-6">
-          <h2 className="text-lg font-bold">Company profile</h2>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
-            {fields.map(([a, b]) => (
-              <div key={a}>
-                <p className="text-xs font-bold uppercase tracking-wider muted">
-                  {a}
-                </p>
-                <p className="mt-1 font-semibold">{String(b || "—")}</p>
-              </div>
-            ))}
-          </div>
-          {c.description && (
-            <div className="mt-6 border-t border-[var(--border)] pt-5">
-              <p className="text-xs font-bold uppercase tracking-wider muted">
-                Description
-              </p>
-              <p className="mt-2 leading-7">{c.description}</p>
-            </div>
-          )}
-        </section>
-        <section className="panel p-6">
-          <Building2 className="text-[var(--accent)]" />
-          <h2 className="mt-4 text-lg font-bold">Workspace security</h2>
-          <p className="mt-2 text-sm leading-6 muted">
-            Company access is restricted to active memberships. Sensitive
-            ownership and permission changes are handled by trusted server
-            operations.
-          </p>
-          <div className="mt-5 rounded-xl bg-[var(--soft)] p-4 text-sm">
-            <b>{(c.enabledModules || []).length}</b> enabled applications
-          </div>
-        </section>
       </div>
     </>
   );
