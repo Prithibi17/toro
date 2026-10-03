@@ -15,12 +15,24 @@ const keys = [
   "contacts.manage",
   "sales.manage",
 ] as const;
+const crmScope = z.enum(["none", "own", "department", "all"]);
+const crmSection = z.object({
+  view: crmScope.default("none"),
+  create: z.boolean().default(false),
+  edit: crmScope.default("none"),
+  delete: crmScope.default("none"),
+  assign: crmScope.default("none"),
+  moveStage: z.boolean().default(false),
+  close: z.boolean().default(false),
+  manage: z.boolean().default(false),
+});
 const input = z.object({
   email: z.string().email(),
   displayName: z.string().trim().min(2).max(100),
   role: z.enum(["admin", "manager", "employee", "intern"]),
   departmentIds: z.array(z.string()).max(10),
   permissions: z.array(z.enum(keys)).max(keys.length),
+  crmPermissions: z.record(z.string(), crmSection).default({}),
 });
 export async function POST(
   req: Request,
@@ -38,7 +50,12 @@ export async function POST(
   const ctx = authz.access;
   try {
     const data = input.parse(await req.json());
-    if (ctx.membership.role !== "owner" && (data.role === "admin" || data.permissions.includes("members.manage") || data.permissions.includes("apps.manage"))) {
+    if (
+      ctx.membership.role !== "owner" &&
+      (data.role === "admin" ||
+        data.permissions.includes("members.manage") ||
+        data.permissions.includes("apps.manage"))
+    ) {
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
     const { auth, db } = getAdmin();
@@ -68,6 +85,7 @@ export async function POST(
           status: "active",
           departmentIds: data.departmentIds,
           permissions,
+          crmPermissions: data.crmPermissions,
           enabledModules: company.enabledModules || [],
           createdAt: FieldValue.serverTimestamp(),
         };

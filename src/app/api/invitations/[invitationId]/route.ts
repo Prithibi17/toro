@@ -9,10 +9,11 @@ import { getAdmin } from "@/lib/firebase-admin";
  */
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ invitationId: string }> }
+  { params }: { params: Promise<{ invitationId: string }> },
 ) {
   const user = await currentUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { invitationId } = await params;
   const { action, companyId } = await req.json();
@@ -22,7 +23,9 @@ export async function PATCH(
   }
 
   const { db } = getAdmin();
-  const inviteRef = db.doc(`companies/${companyId}/invitations/${invitationId}`);
+  const inviteRef = db.doc(
+    `companies/${companyId}/invitations/${invitationId}`,
+  );
   const companyRef = db.doc(`companies/${companyId}`);
 
   try {
@@ -41,7 +44,10 @@ export async function PATCH(
       // Verify this invitation belongs to the current user's email
       const normalized = user.email?.trim().toLowerCase() ?? "";
       if (data.email !== normalized) {
-        return { error: "This invitation is not for your account", status: 403 };
+        return {
+          error: "This invitation is not for your account",
+          status: 403,
+        };
       }
       if (data.status !== "pending") {
         return { error: `Invitation already ${data.status}`, status: 409 };
@@ -50,7 +56,10 @@ export async function PATCH(
       // Check expiry
       const expires = data.expiresAt as Timestamp | undefined;
       if (expires && expires.toDate().getTime() < Date.now()) {
-        tx.update(inviteRef, { status: "expired", updatedAt: FieldValue.serverTimestamp() });
+        tx.update(inviteRef, {
+          status: "expired",
+          updatedAt: FieldValue.serverTimestamp(),
+        });
         return { error: "Invitation has expired", status: 410 };
       }
 
@@ -65,7 +74,11 @@ export async function PATCH(
 
       // Accept
       if (member.exists && member.data()?.status === "active") {
-        tx.update(inviteRef, { status: "accepted", acceptedBy: user.uid, acceptedAt: FieldValue.serverTimestamp() });
+        tx.update(inviteRef, {
+          status: "accepted",
+          acceptedBy: user.uid,
+          acceptedAt: FieldValue.serverTimestamp(),
+        });
         return { ok: true, action: "already_member" };
       }
 
@@ -77,6 +90,7 @@ export async function PATCH(
         status: "active",
         departmentIds: data.departmentIds ?? [],
         permissions: data.permissions ?? {},
+        crmPermissions: data.crmPermissions ?? {},
         enabledModules: c.enabledModules ?? [],
         userId: user.uid,
         email: normalized,
@@ -93,6 +107,7 @@ export async function PATCH(
         status: "active",
         departmentIds: membership.departmentIds,
         permissions: membership.permissions,
+        crmPermissions: membership.crmPermissions,
         enabledModules: membership.enabledModules,
         createdAt: FieldValue.serverTimestamp(),
       });
@@ -118,13 +133,16 @@ export async function PATCH(
     });
 
     if ("error" in result) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status },
+      );
     }
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
