@@ -13,7 +13,7 @@ describe("CRM workflow invariants", () => {
     expect(opportunityStatus("LOST")).toBe("lost");
   });
   it("maps relationships only to canonical CRM collections", () => {
-    expect(relatedCollection("contact")).toBe("crmContacts");
+    expect(relatedCollection("contact")).toBe("contacts");
     expect(relatedCollection("unknown")).toBeUndefined();
   });
   it("routes scheduled work to its operational module", () => {

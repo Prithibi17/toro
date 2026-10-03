@@ -7,6 +7,7 @@ export const CRM_COLLECTIONS = {
   opportunities: "crmOpportunities",
   pipelines: "crmPipelines",
   stages: "crmPipelineStages",
+  stageHistory: "crmStageHistory",
   activities: "crmActivities",
   timeline: "crmTimeline",
   notes: "crmNotes",
@@ -72,9 +73,11 @@ export const organizationInput = z.object({
 });
 export const opportunityInput = z.object({
   name: z.string().trim().min(2).max(160),
+  customerId: id.nullable().default(null),
+  primaryContactId: id.nullable().default(null),
   contactId: id.nullable().default(null),
   organizationId: id.nullable().default(null),
-  pipelineId: id,
+  pipelineId: id.nullable().default(null),
   stageId: id,
   ownerId: id.optional(),
   departmentIds: z.array(id).max(20).default([]),
@@ -129,7 +132,6 @@ export const leadConversionInput = z.object({
   createOrganization: z.boolean().default(true),
   createOpportunity: z.boolean().default(true),
   opportunityTitle: text(160),
-  pipelineId: id.nullable().default(null),
   stageId: id.nullable().default(null),
 });
 export const opportunityUpdateInput = z.object({

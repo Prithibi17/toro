@@ -174,6 +174,15 @@ export async function GET(
     .orderBy("createdAt", "desc")
     .limit(200)
     .get();
+  const [stageSnap, contactSnap] =
+    section === "opportunities"
+      ? await Promise.all([
+          db
+            .collection(`companies/${companyId}/${CRM_COLLECTIONS.stages}`)
+            .get(),
+          db.collection(`companies/${companyId}/contacts`).limit(500).get(),
+        ])
+      : [null, null];
   return NextResponse.json({
     records: snap.docs
       .filter((d) =>
@@ -185,6 +194,15 @@ export async function GET(
         ),
       )
       .map(serialize),
+    stages: stageSnap?.docs
+      .filter((doc) => doc.data().active !== false)
+      .sort(
+        (a, b) =>
+          Number(a.data().sequence ?? a.data().order ?? 0) -
+          Number(b.data().sequence ?? b.data().order ?? 0),
+      )
+      .map(serialize),
+    contacts: contactSnap?.docs.map(serialize),
     enabledSections: enabled,
     canCreate:
       crmGrant(access.membership, section as CrmSection, "create") === true,
@@ -235,14 +253,14 @@ export async function POST(
           `companies/${companyId}/${CRM_COLLECTIONS.stages}/${opportunity.stageId}`,
         )
         .get();
-      if (!stage.exists || stage.data()?.pipelineId !== opportunity.pipelineId)
+      if (!stage.exists || stage.data()?.active === false)
         return NextResponse.json(
-          { error: "Select a stage that belongs to this pipeline." },
+          { error: "Select an active CRM stage." },
           { status: 400 },
         );
       for (const [kind, recordId] of [
-        ["contact", opportunity.contactId],
-        ["organization", opportunity.organizationId],
+        ["contact", opportunity.primaryContactId ?? opportunity.contactId],
+        ["organization", opportunity.customerId ?? opportunity.organizationId],
       ] as const) {
         if (recordId) {
           const linked = await db
@@ -356,6 +374,23 @@ export async function POST(
             updatedAt: FieldValue.serverTimestamp(),
           });
         }
+        if (
+          activity.relatedType === "opportunity" &&
+          activity.status === "scheduled"
+        ) {
+          batch.update(
+            db.doc(
+              `companies/${companyId}/${CRM_COLLECTIONS.opportunities}/${activity.relatedId}`,
+            ),
+            {
+              nextActivityId: ref.id,
+              nextActivityTitle: activity.title,
+              nextActivityType: activity.type,
+              nextActivityDueAt: activity.dueAt,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+          );
+        }
       }
       batch.create(ref, { ...record, ...linkedIds });
       if (section === "opportunities") {
@@ -363,8 +398,16 @@ export async function POST(
           typeof sectionInputs.opportunities
         >;
         for (const [toType, toId, role] of [
-          ["contact", opportunity.contactId, "primary"],
-          ["organization", opportunity.organizationId, "customer"],
+          [
+            "contact",
+            opportunity.primaryContactId ?? opportunity.contactId,
+            "primary",
+          ],
+          [
+            "organization",
+            opportunity.customerId ?? opportunity.organizationId,
+            "customer",
+          ],
         ] as const) {
           if (!toId) continue;
           const association = db
@@ -383,6 +426,17 @@ export async function POST(
             createdAt: FieldValue.serverTimestamp(),
           });
         }
+        const stageHistory = db
+          .collection(`companies/${companyId}/${CRM_COLLECTIONS.stageHistory}`)
+          .doc();
+        batch.create(stageHistory, {
+          companyId,
+          opportunityId: ref.id,
+          fromStageId: null,
+          toStageId: opportunity.stageId,
+          actorId: access.user.uid,
+          changedAt: FieldValue.serverTimestamp(),
+        });
       }
     }
     const entityType = crmEntityType(section)!;

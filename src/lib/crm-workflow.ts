@@ -9,8 +9,8 @@ export function opportunityStatus(stageType: StageType) {
 export function relatedCollection(type: string) {
   return {
     lead: "crmLeads",
-    contact: "crmContacts",
-    organization: "crmOrganizations",
+    contact: "contacts",
+    organization: "contacts",
     opportunity: "crmOpportunities",
   }[type];
 }

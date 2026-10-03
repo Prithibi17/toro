@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
 import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
-import { crmGrant, crmRecordAllowed } from "@/lib/access-policy";
+import { crmGrant, crmRecordAllowed, hasPermission } from "@/lib/access-policy";
 import { appendAudit } from "@/lib/audit";
 import { CRM_COLLECTIONS, leadConversionInput } from "@/lib/crm-model";
 import { getAdmin } from "@/lib/firebase-admin";
@@ -10,8 +10,6 @@ import type { CrmScope, CrmSection } from "@/lib/types";
 
 const requiredActions: Array<[CrmSection, "create" | "edit"]> = [
   ["leads", "edit"],
-  ["contacts", "create"],
-  ["organizations", "create"],
   ["opportunities", "create"],
 ];
 
@@ -29,10 +27,6 @@ export async function POST(
   try {
     const input = leadConversionInput.parse(await req.json());
     const needed = requiredActions.filter(([section]) => {
-      if (section === "contacts")
-        return input.createContact && !input.contactId;
-      if (section === "organizations")
-        return input.createOrganization && !input.organizationId;
       if (section === "opportunities") return input.createOpportunity;
       return true;
     });
@@ -44,9 +38,14 @@ export async function POST(
       )
     )
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    if (input.createOpportunity && (!input.pipelineId || !input.stageId))
+    if (
+      (input.createContact || input.createOrganization) &&
+      !hasPermission(auth.access.membership, "contacts.manage")
+    )
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    if (input.createOpportunity && !input.stageId)
       return NextResponse.json(
-        { error: "Pipeline and initial stage are required." },
+        { error: "Initial stage is required." },
         { status: 400 },
       );
 
@@ -57,14 +56,10 @@ export async function POST(
     const result = await db.runTransaction(async (transaction) => {
       const refs = {
         contact: input.contactId
-          ? db.doc(
-              `companies/${companyId}/${CRM_COLLECTIONS.contacts}/${input.contactId}`,
-            )
+          ? db.doc(`companies/${companyId}/contacts/${input.contactId}`)
           : null,
         organization: input.organizationId
-          ? db.doc(
-              `companies/${companyId}/${CRM_COLLECTIONS.organizations}/${input.organizationId}`,
-            )
+          ? db.doc(`companies/${companyId}/contacts/${input.organizationId}`)
           : null,
         stage: input.stageId
           ? db.doc(
@@ -101,18 +96,22 @@ export async function POST(
         throw new Error("Company not found");
       if (
         input.createOpportunity &&
-        (!stageDoc?.exists || stageDoc.data()?.pipelineId !== input.pipelineId)
+        (!stageDoc?.exists || stageDoc.data()?.active === false)
       )
-        throw new Error("Initial stage does not belong to the pipeline");
+        throw new Error("Initial CRM stage is not active");
 
       let contactRef = refs.contact;
       let organizationRef = refs.organization;
       if (!organizationRef && input.createOrganization) {
         organizationRef = db
-          .collection(`companies/${companyId}/${CRM_COLLECTIONS.organizations}`)
+          .collection(`companies/${companyId}/contacts`)
           .doc();
         transaction.create(organizationRef, {
           companyId,
+          title: lead.organizationName || `${lead.name} company`,
+          subtitle: lead.email || lead.phone || "",
+          status: "customer",
+          contactType: "company",
           name: lead.organizationName || `${lead.name} company`,
           email: "",
           phone: lead.phone || "",
@@ -130,12 +129,14 @@ export async function POST(
         });
       }
       if (!contactRef && input.createContact) {
-        contactRef = db
-          .collection(`companies/${companyId}/${CRM_COLLECTIONS.contacts}`)
-          .doc();
+        contactRef = db.collection(`companies/${companyId}/contacts`).doc();
         const [firstName, ...last] = String(lead.name).trim().split(/\s+/);
         transaction.create(contactRef, {
           companyId,
+          title: String(lead.name),
+          subtitle: lead.email || lead.organizationName || "",
+          status: "customer",
+          contactType: "person",
           firstName,
           lastName: last.join(" "),
           email: lead.email || "",
@@ -164,9 +165,10 @@ export async function POST(
         transaction.create(opportunityRef, {
           companyId,
           name: input.opportunityTitle || lead.title || lead.name,
+          customerId: organizationRef?.id ?? null,
+          primaryContactId: contactRef?.id ?? null,
           contactId: contactRef?.id ?? null,
           organizationId: organizationRef?.id ?? null,
-          pipelineId: input.pipelineId,
           stageId: input.stageId,
           status: "open",
           value: Number(lead.estimatedValue || 0),

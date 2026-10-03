@@ -323,6 +323,7 @@ service cloud.firestore {
       match /crmPipelineStages/{recordId} {
         allow read, write: if false;
       }
+      match /crmStageHistory/{recordId} { allow read, write: if false; }
       match /crmActivities/{recordId} {
         allow read, write: if false;
       }

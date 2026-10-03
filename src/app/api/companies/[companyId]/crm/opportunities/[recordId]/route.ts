@@ -52,10 +52,8 @@ export async function PATCH(
             `companies/${companyId}/${CRM_COLLECTIONS.stages}/${input.stageId}`,
           ),
         );
-        if (!stage.exists || stage.data()?.pipelineId !== current.pipelineId)
-          throw new Error(
-            "Stage does not belong to this opportunity's pipeline",
-          );
+        if (!stage.exists || stage.data()?.active === false)
+          throw new Error("CRM stage is not active");
       }
       const updates: Record<string, unknown> = {
         ...input,
@@ -72,6 +70,19 @@ export async function PATCH(
         else updates.closedAt = null;
       }
       transaction.update(ref, updates);
+      if (input.stageId && input.stageId !== current.stageId) {
+        const stageHistory = db
+          .collection(`companies/${companyId}/${CRM_COLLECTIONS.stageHistory}`)
+          .doc();
+        transaction.create(stageHistory, {
+          companyId,
+          opportunityId: recordId,
+          fromStageId: current.stageId ?? null,
+          toStageId: input.stageId,
+          actorId: auth.access.user.uid,
+          changedAt: FieldValue.serverTimestamp(),
+        });
+      }
       const timeline = db
         .collection(`companies/${companyId}/${CRM_COLLECTIONS.timeline}`)
         .doc();

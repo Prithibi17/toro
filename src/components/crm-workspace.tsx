@@ -1,29 +1,22 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Building2,
+  CalendarClock,
   CirclePlus,
-  Filter,
+  GripVertical,
   LoaderCircle,
   Search,
-  Settings2,
-  UserRound,
-  UsersRound,
   X,
 } from "lucide-react";
-import type { CrmSection } from "@/lib/types";
 type Item = Record<string, unknown> & { id: string };
-type Pipeline = Item & { stages: Item[] };
-const labels: Record<CrmSection, string> = {
-  overview: "Overview",
-  leads: "Leads",
-  contacts: "Contacts",
-  organizations: "Companies",
-  opportunities: "Opportunities",
-  activities: "Activities",
-  pipelines: "Pipelines",
-};
-const all = Object.keys(labels) as CrmSection[];
+type Screen = "pipeline" | "leads" | "activities" | "customers";
+const screens: Array<[Screen, string]> = [
+  ["pipeline", "My Pipeline"],
+  ["leads", "Leads"],
+  ["activities", "Activities"],
+  ["customers", "Customers"],
+];
+
 export function CrmWorkspace({
   companyId,
   currency,
@@ -31,180 +24,159 @@ export function CrmWorkspace({
   companyId: string;
   currency: string;
 }) {
-  const [section, setSection] = useState<CrmSection>("overview"),
-    [enabled, setEnabled] = useState<CrmSection[]>(all),
+  const [screen, setScreen] = useState<Screen>("pipeline"),
     [records, setRecords] = useState<Item[]>([]),
-    [metrics, setMetrics] = useState<Record<string, number>>({}),
+    [stages, setStages] = useState<Item[]>([]),
+    [contacts, setContacts] = useState<Item[]>([]),
     [canCreate, setCanCreate] = useState(false),
-    [canEdit, setCanEdit] = useState(false),
-    [canMoveStage, setCanMoveStage] = useState(false),
-    [pipelines, setPipelines] = useState<Pipeline[]>([]),
+    [canMove, setCanMove] = useState(false),
     [loading, setLoading] = useState(true),
-    [open, setOpen] = useState(false),
-    [settings, setSettings] = useState(false),
+    [query, setQuery] = useState(""),
+    [error, setError] = useState(""),
+    [createStage, setCreateStage] = useState<string | null>(null),
     [historyRecord, setHistoryRecord] = useState<Item | null>(null),
     [history, setHistory] = useState<Item[]>([]),
-    [query, setQuery] = useState(""),
-    [error, setError] = useState("");
+    [activityTarget, setActivityTarget] = useState<Item | null>(null);
+  const section = screen === "pipeline" ? "opportunities" : screen;
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
-    const r = await fetch(`/api/companies/${companyId}/crm/${section}`);
-    const j = await r.json();
+    const url =
+      screen === "customers"
+        ? `/api/companies/${companyId}/records/contacts`
+        : `/api/companies/${companyId}/crm/${section}`;
+    const r = await fetch(url),
+      j = await r.json();
     if (r.ok) {
-      if (j.enabledSections) setEnabled(j.enabledSections);
       setRecords(j.records ?? []);
-      setMetrics(j.metrics ?? {});
       setCanCreate(Boolean(j.canCreate));
-      setCanEdit(Boolean(j.canEdit));
-      setCanMoveStage(Boolean(j.canMoveStage));
+      if (screen === "pipeline") {
+        setStages(j.stages ?? []);
+        setContacts(j.contacts ?? []);
+        setCanMove(Boolean(j.canMoveStage));
+      }
     } else setError(j.error ?? "Could not load CRM");
     setLoading(false);
-  }, [companyId, section]);
+  }, [companyId, screen, section]);
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    if (!enabled.includes("pipelines")) return;
-    void fetch(`/api/companies/${companyId}/crm/pipelines`)
-      .then((r) => (r.ok ? r.json() : { records: [] }))
-      .then((j) => setPipelines(j.records ?? []));
-  }, [companyId, enabled]);
   const visible = useMemo(
     () =>
-      records.filter((r) =>
-        JSON.stringify(r).toLowerCase().includes(query.toLowerCase()),
+      records.filter(
+        (r) =>
+          !query ||
+          JSON.stringify(r).toLowerCase().includes(query.toLowerCase()),
       ),
     [records, query],
   );
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget),
-      body: Record<string, unknown> = Object.fromEntries(f);
-    if (body.dueAt === "") body.dueAt = null;
-    else if (typeof body.dueAt === "string")
-      body.dueAt = new Date(body.dueAt).toISOString();
-    if (section === "pipelines")
-      body.stages = [
-        { name: "New", stageType: "OPEN", probability: 10 },
-        { name: "Won", stageType: "WON", probability: 100 },
-        { name: "Lost", stageType: "LOST", probability: 0 },
-      ];
-    const r = await fetch(`/api/companies/${companyId}/crm/${section}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const j = await r.json();
-    if (r.ok) {
-      setOpen(false);
-      await load();
-    } else setError(j.error ?? "Could not create record");
-  }
-  async function saveSections() {
-    const r = await fetch(`/api/companies/${companyId}/crm/settings`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ enabledSections: enabled }),
-    });
-    if (r.ok) {
-      setSettings(false);
-      await load();
-    } else setError((await r.json()).error);
-  }
-  async function convertLead(record: Item) {
-    const pipeline = pipelines[0],
-      stage = pipeline?.stages?.find((s) => s.stageType === "OPEN");
-    if (!pipeline || !stage) {
-      setError(
-        "Create an active pipeline with an open stage before converting a lead.",
-      );
-      return;
-    }
-    const r = await fetch(
-      `/api/companies/${companyId}/crm/leads/${record.id}/convert`,
-      {
+    const body: Record<string, unknown> = Object.fromEntries(
+      new FormData(e.currentTarget),
+    );
+    if (!body.customerId) body.customerId = null;
+    const r = await fetch(`/api/companies/${companyId}/crm/opportunities`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          createContact: true,
-          createOrganization: Boolean(record.organizationName),
-          createOpportunity: true,
-          opportunityTitle: String(record.name ?? "New opportunity"),
-          pipelineId: pipeline.id,
-          stageId: stage.id,
-        }),
-      },
-    );
-    const j = await r.json();
-    if (r.ok) await load();
-    else setError(j.error ?? "Could not convert lead");
+        body: JSON.stringify(body),
+      }),
+      j = await r.json();
+    if (r.ok) {
+      setCreateStage(null);
+      await load();
+    } else setError(j.error ?? "Could not create opportunity");
   }
-  async function moveOpportunity(recordId: string, stageId: string) {
+  async function move(id: string, stageId: string) {
+    const before = records;
+    setRecords((x) => x.map((r) => (r.id === id ? { ...r, stageId } : r)));
     const r = await fetch(
-      `/api/companies/${companyId}/crm/opportunities/${recordId}`,
+      `/api/companies/${companyId}/crm/opportunities/${id}`,
       {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ stageId }),
       },
     );
-    if (r.ok) await load();
-    else setError((await r.json()).error ?? "Could not move opportunity");
+    if (!r.ok) {
+      setRecords(before);
+      setError((await r.json()).error);
+    } else await load();
   }
   async function openHistory(record: Item) {
     setHistoryRecord(record);
     setHistory([]);
     const r = await fetch(
-      `/api/companies/${companyId}/crm/${section}/${record.id}/timeline`,
-    );
-    const j = await r.json();
+        `/api/companies/${companyId}/crm/opportunities/${record.id}/timeline`,
+      ),
+      j = await r.json();
     if (r.ok) setHistory(j.events ?? []);
-    else setError(j.error ?? "Could not load record history");
+    else setError(j.error);
   }
+  async function createActivity(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activityTarget) return;
+    const body: Record<string, unknown> = Object.fromEntries(
+      new FormData(event.currentTarget),
+    );
+    body.relatedType = "opportunity";
+    body.relatedId = activityTarget.id;
+    body.dueAt = body.dueAt ? new Date(String(body.dueAt)).toISOString() : null;
+    const response = await fetch(`/api/companies/${companyId}/crm/activities`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setActivityTarget(null);
+      setHistoryRecord(null);
+      await load();
+    } else setError(data.error ?? "Could not schedule activity");
+  }
+  const firstStage = String(
+    stages.find((s) => s.stageType === "OPEN")?.id ?? stages[0]?.id ?? "",
+  );
   return (
     <>
-      <header className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div>
-          <p className="text-sm font-semibold text-[var(--accent)]">
-            Customer relationships
-          </p>
-          <h1 className="mt-1 text-3xl font-extrabold">CRM</h1>
-          <p className="mt-2 muted">
-            Manage relationships, opportunities and follow-up in one workspace.
-          </p>
+      <header className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-extrabold">
+            CRM / {screens.find((x) => x[0] === screen)?.[1]}
+          </h1>
+          <nav className="flex gap-1 rounded-xl bg-[var(--soft)] p-1">
+            {screens.map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setScreen(key)}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold ${screen === key ? "bg-[var(--panel)] shadow-sm" : "muted"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
         </div>
         <div className="flex gap-2">
-          {section === "pipelines" && (
+          <div className="flex min-w-56 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
+            <Search size={16} />
+            <input
+              className="w-full bg-transparent py-2.5 text-sm outline-none"
+              placeholder="Search CRM"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          {screen === "pipeline" && canCreate && firstStage && (
             <button
-              className="btn btn-secondary"
-              onClick={() => setSettings(true)}
+              className="btn btn-primary"
+              onClick={() => setCreateStage(firstStage)}
             >
-              <Settings2 size={17} />
-              CRM settings
-            </button>
-          )}
-          {canCreate && section !== "overview" && (
-            <button className="btn btn-primary" onClick={() => setOpen(true)}>
               <CirclePlus size={17} />
-              New {labels[section].replace(/s$/, "")}
+              New
             </button>
           )}
         </div>
       </header>
-      <nav className="mb-6 flex gap-1 overflow-x-auto rounded-2xl bg-[var(--soft)] p-1">
-        {all
-          .filter((s) => enabled.includes(s))
-          .map((s) => (
-            <button
-              key={s}
-              onClick={() => setSection(s)}
-              className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-semibold ${section === s ? "bg-[var(--panel)] shadow-sm" : "muted"}`}
-            >
-              {labels[s]}
-            </button>
-          ))}
-      </nav>
       {error && (
         <p className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-500">
           {error}
@@ -214,410 +186,319 @@ export function CrmWorkspace({
         <div className="grid min-h-80 place-items-center">
           <LoaderCircle className="animate-spin" />
         </div>
-      ) : section === "overview" ? (
-        <Overview metrics={metrics} currency={currency} />
+      ) : screen === "pipeline" ? (
+        <Board
+          records={visible}
+          stages={stages}
+          contacts={contacts}
+          currency={currency}
+          canCreate={canCreate}
+          canMove={canMove}
+          add={setCreateStage}
+          move={move}
+          open={openHistory}
+        />
       ) : (
-        <>
-          <div className="panel mb-5 flex items-center gap-2 p-3">
-            <Search size={17} className="muted" />
-            <input
-              className="w-full bg-transparent outline-none"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${labels[section].toLowerCase()}…`}
-            />
-            <Filter size={17} className="muted" />
-          </div>
-          <RecordList
-            section={section}
-            records={visible}
-            currency={currency}
-            pipelines={pipelines}
-            canEdit={canEdit}
-            canMoveStage={canMoveStage}
-            convertLead={convertLead}
-            moveOpportunity={moveOpportunity}
-            openHistory={openHistory}
-          />
-        </>
+        <Table screen={screen} records={visible} currency={currency} />
       )}
-      {open && (
-        <Modal
-          title={`New ${labels[section].replace(/s$/, "")}`}
-          close={() => setOpen(false)}
-        >
-          <EntityForm
-            section={section}
-            currency={currency}
-            pipelines={pipelines}
-            submit={create}
-          />
-        </Modal>
-      )}
-      {settings && (
-        <Modal title="CRM sections" close={() => setSettings(false)}>
-          <div className="space-y-2">
-            {all
-              .filter((s) => s !== "overview")
-              .map((s) => (
-                <label
-                  key={s}
-                  className="flex items-center gap-3 rounded-xl bg-[var(--soft)] p-3"
-                >
-                  <input
-                    type="checkbox"
-                    checked={enabled.includes(s)}
-                    onChange={(e) =>
-                      setEnabled((x) =>
-                        e.target.checked ? [...x, s] : x.filter((v) => v !== s),
-                      )
-                    }
-                  />
-                  {labels[s]}
-                </label>
-              ))}
-          </div>
-          <button
-            className="btn btn-primary mt-5 w-full"
-            onClick={saveSections}
-          >
-            Save CRM sections
-          </button>
+      {createStage && (
+        <Modal title="New opportunity" close={() => setCreateStage(null)}>
+          <form className="space-y-4" onSubmit={create}>
+            <Field label="Opportunity">
+              <input className="input" name="name" required minLength={2} />
+            </Field>
+            <Field label="Customer">
+              <select className="input" name="customerId" defaultValue="">
+                <option value="">No customer selected</option>
+                {contacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {String(c.title ?? c.name ?? "Contact")}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Expected revenue">
+              <input
+                className="input"
+                name="value"
+                type="number"
+                min="0"
+                defaultValue="0"
+                required
+              />
+            </Field>
+            <input type="hidden" name="stageId" value={createStage} />
+            <input type="hidden" name="currency" value={currency} />
+            <button className="btn btn-primary w-full">Add opportunity</button>
+          </form>
         </Modal>
       )}
       {historyRecord && (
-        <Modal title="Record history" close={() => setHistoryRecord(null)}>
+        <Modal
+          title={String(historyRecord.name ?? "Opportunity history")}
+          close={() => setHistoryRecord(null)}
+        >
           <div className="space-y-3">
-            {history.map((event) => (
-              <article
-                key={event.id}
-                className="rounded-xl bg-[var(--soft)] p-3"
-              >
-                <p className="font-semibold">
-                  {String(event.eventType ?? "updated").replaceAll("_", " ")}
+            <div className="grid grid-cols-2 gap-3 rounded-xl bg-[var(--soft)] p-4 text-sm">
+              <span className="muted">Expected revenue</span>
+              <b>
+                {new Intl.NumberFormat(undefined, {
+                  style: "currency",
+                  currency,
+                  maximumFractionDigits: 0,
+                }).format(Number(historyRecord.value || 0))}
+              </b>
+              <span className="muted">Probability</span>
+              <b>{Number(historyRecord.probability || 0)}%</b>
+            </div>
+            <button
+              className="btn btn-primary w-full"
+              onClick={() => setActivityTarget(historyRecord)}
+            >
+              <CalendarClock size={16} />
+              Schedule next activity
+            </button>
+            {history.map((e) => (
+              <article key={e.id} className="rounded-xl bg-[var(--soft)] p-3">
+                <p className="font-semibold capitalize">
+                  {String(e.eventType ?? "updated").replaceAll("_", " ")}
                 </p>
                 <p className="mt-1 text-xs muted">
-                  {event.timestamp
-                    ? new Date(String(event.timestamp)).toLocaleString()
+                  {e.timestamp
+                    ? new Date(String(e.timestamp)).toLocaleString()
                     : "Pending timestamp"}
                 </p>
               </article>
             ))}
             {!history.length && (
-              <p className="text-sm muted">No history recorded yet.</p>
+              <p className="text-sm muted">No history yet.</p>
             )}
           </div>
+        </Modal>
+      )}
+      {activityTarget && (
+        <Modal title="Schedule activity" close={() => setActivityTarget(null)}>
+          <form className="space-y-4" onSubmit={createActivity}>
+            <Field label="Activity type">
+              <select className="input" name="type">
+                <option value="call">Call</option>
+                <option value="meeting">Meeting</option>
+                <option value="email">Email</option>
+                <option value="follow-up">Follow-up</option>
+                <option value="task">Task</option>
+              </select>
+            </Field>
+            <Field label="Title">
+              <input
+                className="input"
+                name="title"
+                required
+                defaultValue={`Follow up ${String(activityTarget.name ?? "")}`}
+              />
+            </Field>
+            <Field label="Due">
+              <input
+                className="input"
+                name="dueAt"
+                type="datetime-local"
+                required
+              />
+            </Field>
+            <Field label="Notes">
+              <textarea className="input min-h-20" name="description" />
+            </Field>
+            <button className="btn btn-primary w-full">Schedule</button>
+          </form>
         </Modal>
       )}
     </>
   );
 }
-function Overview({
-  metrics,
+
+function Board({
+  records,
+  stages,
+  contacts,
   currency,
+  canCreate,
+  canMove,
+  add,
+  move,
+  open,
 }: {
-  metrics: Record<string, number>;
+  records: Item[];
+  stages: Item[];
+  contacts: Item[];
   currency: string;
+  canCreate: boolean;
+  canMove: boolean;
+  add: (id: string) => void;
+  move: (id: string, stage: string) => void;
+  open: (r: Item) => void;
 }) {
-  const money = (n = 0) =>
+  const money = (n: number) =>
     new Intl.NumberFormat(undefined, {
       style: "currency",
       currency,
       maximumFractionDigits: 0,
     }).format(n);
-  const cards = [
-    ["Open opportunities", metrics.openOpportunities],
-    ["Pipeline value", money(metrics.pipelineValue)],
-    ["Won value", money(metrics.wonValue)],
-    ["Lost opportunities", metrics.lostOpportunities],
-    ["New leads", metrics.newLeads],
-    ["Qualified leads", metrics.qualifiedLeads],
-    ["Activities due today", metrics.dueToday],
-    ["Overdue activities", metrics.overdue],
-  ];
+  const active = stages.filter((s) => s.stageType !== "WON");
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {cards.map(([a, b]) => (
-        <div className="panel p-5" key={String(a)}>
-          <p className="text-sm muted">{a}</p>
-          <p className="mt-2 text-2xl font-extrabold">{b ?? 0}</p>
-        </div>
-      ))}
+    <div className="flex min-h-[68vh] gap-4 overflow-x-auto pb-4">
+      {active.map((stage) => {
+        const deals = records.filter(
+            (r) => r.stageId === stage.id && r.status !== "lost",
+          ),
+          total = deals.reduce((n, r) => n + Number(r.value || 0), 0);
+        return (
+          <section
+            key={stage.id}
+            className="w-80 shrink-0 rounded-2xl bg-[var(--soft)] p-3"
+            onDragOver={(e) => canMove && e.preventDefault()}
+            onDrop={(e) => {
+              if (canMove) {
+                const id = e.dataTransfer.getData("text/plain");
+                if (id) void move(id, stage.id);
+              }
+            }}
+          >
+            <header className="mb-3 px-1">
+              <div className="flex justify-between">
+                <b>{String(stage.name)}</b>
+                <span className="rounded-full bg-[var(--panel)] px-2 text-xs">
+                  {deals.length}
+                </span>
+              </div>
+              <p className="mt-1 text-sm font-semibold text-[var(--accent)]">
+                {money(total)}
+              </p>
+            </header>
+            <div className="space-y-3">
+              {deals.map((deal) => {
+                const customer = contacts.find(
+                  (c) => c.id === (deal.customerId ?? deal.organizationId),
+                );
+                return (
+                  <article
+                    key={deal.id}
+                    draggable={canMove}
+                    onDragStart={(e) =>
+                      e.dataTransfer.setData("text/plain", deal.id)
+                    }
+                    onClick={() => open(deal)}
+                    className="panel cursor-pointer p-4"
+                  >
+                    <div className="flex gap-2">
+                      {canMove && (
+                        <GripVertical size={16} className="mt-1 muted" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <b>{String(deal.name)}</b>
+                        <p className="mt-1 truncate text-sm muted">
+                          {String(
+                            customer?.title ?? customer?.name ?? "No customer",
+                          )}
+                        </p>
+                        <p className="mt-3 font-semibold">
+                          {money(Number(deal.value || 0))}
+                        </p>
+                        <div className="mt-3 flex justify-between text-xs muted">
+                          <span>
+                            {deal.priority === "high" ||
+                            deal.priority === "urgent"
+                              ? "High priority"
+                              : "Normal"}
+                          </span>
+                          {deal.nextActivityTitle ? (
+                            <span className="flex gap-1">
+                              <CalendarClock size={13} />
+                              {String(deal.nextActivityTitle)}
+                            </span>
+                          ) : (
+                            <span>No next activity</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+              {canCreate && (
+                <button
+                  className="w-full rounded-xl border border-dashed border-[var(--border)] p-3 text-sm font-semibold muted"
+                  onClick={() => add(stage.id)}
+                >
+                  + Add
+                </button>
+              )}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
-function RecordList({
-  section,
+
+function Table({
+  screen,
   records,
   currency,
-  pipelines,
-  canEdit,
-  canMoveStage,
-  convertLead,
-  moveOpportunity,
-  openHistory,
 }: {
-  section: CrmSection;
+  screen: Exclude<Screen, "pipeline">;
   records: Item[];
   currency: string;
-  pipelines: Pipeline[];
-  canEdit: boolean;
-  canMoveStage: boolean;
-  convertLead: (record: Item) => void;
-  moveOpportunity: (recordId: string, stageId: string) => void;
-  openHistory: (record: Item) => void;
 }) {
   if (!records.length)
     return (
-      <div className="panel grid min-h-64 place-items-center text-center">
+      <div className="panel grid min-h-72 place-items-center text-center">
         <div>
-          <UsersRound className="mx-auto mb-3 muted" />
-          <h2 className="font-bold">No {labels[section].toLowerCase()} yet</h2>
+          <h2 className="font-bold">No {screen} yet</h2>
           <p className="mt-1 text-sm muted">
-            Create the first record when you are ready.
+            Records appear here as sales work progresses.
           </p>
         </div>
       </div>
     );
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="panel overflow-hidden">
       {records.map((r) => (
-        <article className="panel p-5" key={r.id}>
-          <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--soft)]">
-              {section === "organizations" ? (
-                <Building2 size={18} />
-              ) : (
-                <UserRound size={18} />
-              )}
-            </span>
-            <div className="min-w-0">
-              <h3 className="font-bold">
-                {String(
-                  r.name ??
-                    [r.firstName, r.lastName].filter(Boolean).join(" ") ??
-                    r.title ??
-                    "Untitled",
-                )}
-              </h3>
-              <p className="mt-1 text-sm muted">
-                {String(r.email ?? r.industry ?? r.type ?? r.status ?? "")}
-              </p>
-              {r.value !== undefined && (
-                <p className="mt-3 font-semibold text-[var(--accent)]">
-                  {new Intl.NumberFormat(undefined, {
-                    style: "currency",
-                    currency,
-                    maximumFractionDigits: 0,
-                  }).format(Number(r.value))}
-                </p>
-              )}
-              {section === "leads" &&
-                canEdit &&
-                String(r.status).toLowerCase() !== "converted" && (
-                  <button
-                    className="btn btn-secondary mt-4"
-                    onClick={() => convertLead(r)}
-                  >
-                    Convert to opportunity
-                  </button>
-                )}
-              {section === "opportunities" && canMoveStage && (
-                <select
-                  aria-label="Opportunity stage"
-                  className="input mt-4 !py-2 text-sm"
-                  value={String(r.stageId ?? "")}
-                  onChange={(e) => moveOpportunity(r.id, e.target.value)}
-                >
-                  {pipelines
-                    .find((p) => p.id === r.pipelineId)
-                    ?.stages.map((stage) => (
-                      <option key={stage.id} value={stage.id}>
-                        {String(stage.name)}
-                      </option>
-                    ))}
-                </select>
-              )}
-              {section !== "pipelines" && (
-                <button
-                  className="mt-4 text-sm font-semibold text-[var(--accent)]"
-                  onClick={() => openHistory(r)}
-                >
-                  View history
-                </button>
-              )}
-            </div>
+        <article
+          key={r.id}
+          className="grid grid-cols-[1.5fr_1fr_.7fr] border-b border-[var(--border)] px-5 py-4 last:border-0"
+        >
+          <div>
+            <b>{String(r.name ?? r.title ?? "Untitled")}</b>
+            <p className="text-sm muted">
+              {String(r.email ?? r.subtitle ?? r.type ?? "")}
+            </p>
           </div>
+          <span className="capitalize">{String(r.status ?? "active")}</span>
+          <span className="text-right">
+            {r.value !== undefined
+              ? new Intl.NumberFormat(undefined, {
+                  style: "currency",
+                  currency,
+                  maximumFractionDigits: 0,
+                }).format(Number(r.value))
+              : ""}
+          </span>
         </article>
       ))}
     </div>
   );
 }
-function EntityForm({
-  section,
-  currency,
-  pipelines,
-  submit,
+function Field({
+  label,
+  children,
 }: {
-  section: CrmSection;
-  currency: string;
-  pipelines: Pipeline[];
-  submit: (e: React.FormEvent<HTMLFormElement>) => void;
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <label>
-        <span className="label">
-          {section === "contacts"
-            ? "First name"
-            : section === "activities"
-              ? "Title"
-              : "Name"}
-        </span>
-        <input
-          className="input"
-          name={
-            section === "contacts"
-              ? "firstName"
-              : section === "activities"
-                ? "title"
-                : "name"
-          }
-          required
-        />
-      </label>
-      {section === "contacts" && (
-        <label>
-          <span className="label">Last name</span>
-          <input className="input" name="lastName" />
-        </label>
-      )}
-      {["leads", "contacts", "organizations"].includes(section) && (
-        <>
-          <label>
-            <span className="label">Email</span>
-            <input className="input" type="email" name="email" />
-          </label>
-          <label>
-            <span className="label">Phone</span>
-            <input className="input" name="phone" />
-          </label>
-        </>
-      )}
-      {section === "leads" && (
-        <>
-          <label>
-            <span className="label">Status</span>
-            <select className="input" name="status">
-              <option>New</option>
-              <option>Contacted</option>
-              <option>Qualified</option>
-              <option>Unqualified</option>
-            </select>
-          </label>
-          <label>
-            <span className="label">Estimated value</span>
-            <input
-              className="input"
-              type="number"
-              name="estimatedValue"
-              min="0"
-              defaultValue="0"
-            />
-          </label>
-        </>
-      )}
-      {section === "organizations" && (
-        <>
-          <label>
-            <span className="label">Industry</span>
-            <input className="input" name="industry" />
-          </label>
-          <label>
-            <span className="label">Website</span>
-            <input className="input" type="url" name="website" />
-          </label>
-        </>
-      )}
-      {section === "opportunities" && (
-        <>
-          <label>
-            <span className="label">Value ({currency})</span>
-            <input
-              className="input"
-              type="number"
-              name="value"
-              min="0"
-              required
-            />
-          </label>
-          <input type="hidden" name="currency" value={currency} />
-          <label>
-            <span className="label">Pipeline</span>
-            <select className="input" name="pipelineId" required>
-              <option value="">Select pipeline</option>
-              {pipelines.map((pipeline) => (
-                <option key={pipeline.id} value={pipeline.id}>
-                  {String(pipeline.name)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span className="label">Initial stage</span>
-            <select className="input" name="stageId" required>
-              <option value="">Select stage</option>
-              {pipelines.flatMap((pipeline) =>
-                pipeline.stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {String(pipeline.name)} — {String(stage.name)}
-                  </option>
-                )),
-              )}
-            </select>
-          </label>
-        </>
-      )}
-      {section === "activities" && (
-        <>
-          <label>
-            <span className="label">Type</span>
-            <select className="input" name="type">
-              <option value="call">Call</option>
-              <option value="meeting">Meeting</option>
-              <option value="email">Email</option>
-              <option value="follow-up">Follow-up</option>
-              <option value="task">Task</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>
-            <span className="label">Related type</span>
-            <select className="input" name="relatedType">
-              <option value="lead">Lead</option>
-              <option value="contact">Contact</option>
-              <option value="organization">Company</option>
-              <option value="opportunity">Opportunity</option>
-            </select>
-          </label>
-          <label>
-            <span className="label">Related record ID</span>
-            <input className="input" name="relatedId" required />
-          </label>
-          <label>
-            <span className="label">Due</span>
-            <input className="input" type="datetime-local" name="dueAt" />
-          </label>
-        </>
-      )}
-      {section === "pipelines" && (
-        <p className="text-sm muted">
-          A new pipeline starts with Open, Won and Lost stages. Stage types
-          determine outcome, not stage names.
-        </p>
-      )}
-      <button className="btn btn-primary w-full">Create</button>
-    </form>
+    <label>
+      <span className="label">{label}</span>
+      {children}
+    </label>
   );
 }
 function Modal({
@@ -630,11 +511,11 @@ function Modal({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
-      <section className="panel my-6 w-full max-w-lg p-6">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+      <section className="panel w-full max-w-lg p-6">
         <header className="mb-6 flex justify-between">
           <h2 className="text-xl font-extrabold">{title}</h2>
-          <button onClick={close}>
+          <button onClick={close} aria-label="Close">
             <X />
           </button>
         </header>
