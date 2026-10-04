@@ -1,18 +1,16 @@
 import { notFound } from "next/navigation";
-import { requireMembership } from "@/lib/session";
+import { authorizeCompany } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { CrmWorkspace } from "@/components/crm-workspace";
-import { ensureDefaultCrmStages } from "@/lib/crm-defaults";
 export default async function Page({
   params,
 }: {
   params: Promise<{ companyId: string }>;
 }) {
   const { companyId } = await params;
-  const ctx = await requireMembership(companyId);
-  if (!ctx || !ctx.membership.enabledModules?.includes("crm")) notFound();
+  const result = await authorizeCompany(companyId, { module: "crm" });
+  if (!result.ok) notFound();
   const admin = getAdmin();
-  await ensureDefaultCrmStages(admin.db, companyId, ctx.user.uid);
   const company = await admin.db.doc(`companies/${companyId}`).get();
   return (
     <CrmWorkspace

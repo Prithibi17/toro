@@ -342,6 +342,7 @@ function CrmScope({ name, label }: { name: string; label: string }) {
       <select className="input !py-2" name={name} defaultValue="none">
         <option value="none">None</option>
         <option value="own">Own</option>
+        <option value="team">Sales team</option>
         <option value="department">Department</option>
         <option value="all">All</option>
       </select>

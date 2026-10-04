@@ -57,20 +57,25 @@ export function crmGrant(
   if (override !== undefined) return override;
   const resource =
     membership.resourcePermissions?.[
-      `crm.${section === "organizations" ? "organization" : section.replace(/s$/, "")}`
+      `crm.${section === "opportunities" ? "opportunity" : section === "activities" ? "activity" : section.replace(/s$/, "")}`
     ];
   const actionKey = `crm.${section}.${action}`;
   if (["view", "edit", "delete"].includes(action)) {
     const operation =
       action === "view" ? "read" : action === "edit" ? "write" : "delete";
+    if (resource?.[operation] === false) return false;
     if (resource?.[operation] === true) {
       const scope = resource.scope;
+      if (!scope || scope === "none") return "none";
       if (scope === "company") return "all";
       if (scope === "department") return "department";
-      if (["own", "assigned", "own_assigned", "team"].includes(scope ?? ""))
+      if (scope === "team") return "team";
+      if (["own", "assigned", "own_assigned"].includes(scope ?? ""))
         return "own";
     }
   }
+  if (membership.actionPermissions?.[actionKey] === false) return false;
+  if (action === "create" && resource?.create === false) return false;
   if (action === "create" && resource?.create === true) return true;
   if (membership.actionPermissions?.[actionKey] === true) return true;
   if (
@@ -86,10 +91,14 @@ export function crmRecordAllowed(
   userId: string,
   membership: Membership,
   scope: CrmScope,
-  record: { ownerId?: string; departmentIds?: string[] },
+  record: { ownerId?: string; departmentIds?: string[]; salesTeamId?: string },
 ) {
   if (scope === "all") return true;
   if (scope === "own") return record.ownerId === userId;
+  if (scope === "team")
+    return Boolean(
+      record.salesTeamId && membership.crmTeamIds?.includes(record.salesTeamId),
+    );
   if (scope === "department")
     return Boolean(
       record.departmentIds?.some((id) =>

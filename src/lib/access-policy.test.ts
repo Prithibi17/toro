@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canReadTask, crmGrant, crmRecordAllowed, hasPermission } from "./access-policy";
+import {
+  canReadTask,
+  crmGrant,
+  crmRecordAllowed,
+  hasPermission,
+} from "./access-policy";
 import type { Membership } from "./types";
 const member = (
   role: Membership["role"],
@@ -54,6 +59,46 @@ describe("task visibility", () => {
   });
 });
 describe("CRM permission resolution", () => {
+  it("limits team visibility to server-resolved active teams", () => {
+    const m = member("employee");
+    m.resourcePermissions = {
+      "crm.opportunity": { read: true, scope: "team" },
+    };
+    m.crmTeamIds = ["sales-east"];
+    expect(crmGrant(m, "opportunities", "view")).toBe("team");
+    expect(
+      crmRecordAllowed("me", m, "team", {
+        ownerId: "other",
+        salesTeamId: "sales-east",
+      }),
+    ).toBe(true);
+    expect(
+      crmRecordAllowed("me", m, "team", {
+        ownerId: "me",
+        salesTeamId: "sales-west",
+      }),
+    ).toBe(false);
+    expect(crmRecordAllowed("me", m, "team", { ownerId: "me" })).toBe(false);
+  });
+  it("does not fall back to role access after an explicit resource denial", () => {
+    const m = member("admin");
+    m.resourcePermissions = {
+      "crm.opportunity": { read: false, write: false, create: false },
+    };
+    expect(crmGrant(m, "opportunities", "view")).toBe(false);
+    expect(crmGrant(m, "opportunities", "edit")).toBe(false);
+    expect(crmGrant(m, "opportunities", "create")).toBe(false);
+  });
+  it("resolves singular opportunity and activity resource names", () => {
+    const m = member("employee");
+    m.resourcePermissions = {
+      "crm.opportunity": { read: true, write: true, scope: "company" },
+      "crm.activity": { create: true },
+    };
+    expect(crmGrant(m, "opportunities", "view")).toBe("all");
+    expect(crmGrant(m, "opportunities", "edit")).toBe("all");
+    expect(crmGrant(m, "activities", "create")).toBe(true);
+  });
   it("applies an individual override before role fallback", () => {
     const m = member("employee");
     m.crmPermissions = { leads: { view: "all", create: false } };
@@ -68,7 +113,11 @@ describe("CRM permission resolution", () => {
     const m = member("manager", {}, ["sales"]);
     expect(crmRecordAllowed("u", m, "own", { ownerId: "u" })).toBe(true);
     expect(crmRecordAllowed("u", m, "own", { ownerId: "x" })).toBe(false);
-    expect(crmRecordAllowed("u", m, "department", { departmentIds: ["sales"] })).toBe(true);
-    expect(crmRecordAllowed("u", m, "department", { departmentIds: ["finance"] })).toBe(false);
+    expect(
+      crmRecordAllowed("u", m, "department", { departmentIds: ["sales"] }),
+    ).toBe(true);
+    expect(
+      crmRecordAllowed("u", m, "department", { departmentIds: ["finance"] }),
+    ).toBe(false);
   });
 });

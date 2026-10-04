@@ -7,6 +7,8 @@ import { appendAudit } from "@/lib/audit";
 import { CRM_COLLECTIONS, leadConversionInput } from "@/lib/crm-model";
 import { getAdmin } from "@/lib/firebase-admin";
 import type { CrmScope, CrmSection } from "@/lib/types";
+import { normalizePriority } from "@/lib/crm-query";
+import { history, demand } from "@/lib/crm-server";
 
 const requiredActions: Array<[CrmSection, "create" | "edit"]> = [
   ["leads", "edit"],
@@ -67,7 +69,7 @@ export async function POST(
             )
           : null,
       };
-      const [leadDoc, contactDoc, organizationDoc, stageDoc] =
+      const [leadDoc, contactDoc, organizationDoc, stageDoc, companyDoc] =
         await Promise.all([
           transaction.get(leadRef),
           refs.contact ? transaction.get(refs.contact) : Promise.resolve(null),
@@ -75,6 +77,7 @@ export async function POST(
             ? transaction.get(refs.organization)
             : Promise.resolve(null),
           refs.stage ? transaction.get(refs.stage) : Promise.resolve(null),
+          transaction.get(db.doc(`companies/${companyId}`)),
         ]);
       if (!leadDoc.exists) throw new Error("Lead not found");
       const lead = leadDoc.data()!;
@@ -94,11 +97,19 @@ export async function POST(
         throw new Error("Contact not found");
       if (organizationDoc && !organizationDoc.exists)
         throw new Error("Company not found");
+      if (contactDoc?.exists)
+        demand(auth.access, "contacts", "view", contactDoc.data());
+      if (organizationDoc?.exists)
+        demand(auth.access, "contacts", "view", organizationDoc.data());
       if (
         input.createOpportunity &&
         (!stageDoc?.exists || stageDoc.data()?.active === false)
       )
         throw new Error("Initial CRM stage is not active");
+      if (input.createOpportunity && stageDoc?.data()?.stageType !== "OPEN")
+        throw new Error(
+          "Convert into an open stage; close the opportunity separately",
+        );
 
       let contactRef = refs.contact;
       let organizationRef = refs.organization;
@@ -165,19 +176,25 @@ export async function POST(
         transaction.create(opportunityRef, {
           companyId,
           name: input.opportunityTitle || lead.title || lead.name,
-          customerId: organizationRef?.id ?? null,
+          customerId: organizationRef?.id ?? contactRef?.id ?? null,
           primaryContactId: contactRef?.id ?? null,
           contactId: contactRef?.id ?? null,
           organizationId: organizationRef?.id ?? null,
           stageId: input.stageId,
           status: "open",
           value: Number(lead.estimatedValue || 0),
-          currency: "INR",
+          currency: companyDoc.data()?.currency ?? "INR",
+          version: 1,
+          archived: false,
+          email: lead.email ?? "",
+          phone: lead.phone ?? "",
+          lastMeaningfulAt: FieldValue.serverTimestamp(),
           probability: Number(stageDoc?.data()?.probability || 0),
           expectedCloseDate: lead.expectedCloseDate || "",
           source: lead.source || "",
           sourceLeadId: recordId,
-          priority: lead.priority || "medium",
+          priority: normalizePriority(lead.priority),
+          salesTeamId: lead.salesTeamId ?? null,
           description: lead.description || "",
           tags: lead.tags || [],
           customFields: lead.customFields || {},
@@ -188,6 +205,16 @@ export async function POST(
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
+        history(
+          db,
+          transaction,
+          companyId,
+          auth.access,
+          opportunityRef.id,
+          "lead_converted",
+          {},
+          `Converted from lead ${lead.name}`,
+        );
       }
       const targets = [
         contactRef && ["contact", contactRef.id, "converted_contact"],

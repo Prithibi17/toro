@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
     "firebase": "^12.2.1",
     "firebase-admin": "^13.4.0",
     "lucide-react": "^0.468.0",

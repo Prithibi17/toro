@@ -65,7 +65,7 @@ export type CrmSection =
   | "opportunities"
   | "activities"
   | "pipelines";
-export type CrmScope = "none" | "own" | "department" | "all";
+export type CrmScope = "none" | "own" | "team" | "department" | "all";
 export type CrmAction =
   | "view"
   | "create"
@@ -96,6 +96,8 @@ export type Membership = {
   departmentIds?: string[];
   permissions?: Partial<Record<PermissionKey, boolean>>;
   crmPermissions?: CrmPermissionSet;
+  /** Resolved from active company sales teams by server authorization. */
+  crmTeamIds?: string[];
 };
 export type SessionUser = {
   uid: string;

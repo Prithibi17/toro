@@ -24,7 +24,28 @@ export const CRM_SECTIONS: CrmSection[] = [
   "pipelines",
 ];
 const text = (max = 200) => z.string().trim().max(max).default("");
-const id = z.string().trim().min(1).max(128);
+const id = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[^/]+$/, "Invalid record ID");
+export const priorityInput = z.union([
+  z.number().int().min(0).max(3),
+  z
+    .enum(["low", "medium", "high", "urgent"])
+    .transform((v) => ["low", "medium", "high", "urgent"].indexOf(v)),
+]);
+const dateOnly = z
+  .string()
+  .refine(
+    (v) =>
+      v === "" ||
+      (/^\d{4}-\d{2}-\d{2}$/.test(v) &&
+        !Number.isNaN(new Date(v).getTime()) &&
+        new Date(v).toISOString().slice(0, 10) === v),
+    "Invalid date",
+  );
 const custom = z
   .record(
     z.string(),
@@ -79,14 +100,23 @@ export const opportunityInput = z.object({
   organizationId: id.nullable().default(null),
   pipelineId: id.nullable().default(null),
   stageId: id,
-  ownerId: id.optional(),
+  ownerId: id.nullable().optional(),
+  salesTeamId: id.nullable().default(null),
+  email: z.string().email().or(z.literal("")).default(""),
+  phone: text(40),
+  city: text(100),
+  country: text(100),
+  medium: text(100),
+  campaign: text(100),
+  lostReasonId: id.nullable().default(null),
+  lostNotes: text(2000),
   departmentIds: z.array(id).max(20).default([]),
   value: z.coerce.number().min(0).max(999999999),
   currency: z.string().length(3).default("INR"),
   probability: z.coerce.number().min(0).max(100).default(0),
-  expectedCloseDate: text(30),
+  expectedCloseDate: dateOnly.default(""),
   source: text(80),
-  priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
+  priority: priorityInput.default(0),
   tags: z.array(z.string()).max(30).default([]),
   description: text(4000),
   customFields: custom,
@@ -112,7 +142,15 @@ export const pipelineInput = z.object({
     .max(30),
 });
 export const activityInput = z.object({
-  type: z.enum(["call", "meeting", "email", "follow-up", "task", "other"]),
+  type: z.enum([
+    "call",
+    "meeting",
+    "email",
+    "follow-up",
+    "task",
+    "document",
+    "other",
+  ]),
   title: z.string().trim().min(2).max(200),
   description: text(2000),
   relatedType: z.enum([
@@ -127,6 +165,8 @@ export const activityInput = z.object({
   assigneeId: id.optional(),
   departmentIds: z.array(id).max(20).default([]),
   dueAt: z.string().datetime().nullable().default(null),
+  endAt: z.string().datetime().optional(),
+  attendeeIds: z.array(id).max(100).default([]),
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   status: z.enum(["scheduled", "completed", "cancelled"]).default("scheduled"),
   outcome: text(1000),
@@ -140,12 +180,30 @@ export const leadConversionInput = z.object({
   opportunityTitle: text(160),
   stageId: id.nullable().default(null),
 });
-export const opportunityUpdateInput = z.object({
-  stageId: id.optional(),
-  expectedCloseDate: text(30).optional(),
-  probability: z.coerce.number().min(0).max(100).optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-});
+// Zod 4 applies defaults even inside optional fields. A PATCH must never
+// replace omitted fields with creation defaults (for example, clear a customer).
+const updateShape = Object.fromEntries(
+  Object.entries(opportunityInput.shape).map(([key, schema]) => [
+    key,
+    (schema instanceof z.ZodDefault
+      ? schema.removeDefault()
+      : schema
+    ).optional(),
+  ]),
+) as {
+  [K in keyof typeof opportunityInput.shape]: z.ZodOptional<
+    (typeof opportunityInput.shape)[K] extends z.ZodDefault<infer Inner>
+      ? Inner
+      : (typeof opportunityInput.shape)[K]
+  >;
+};
+export const opportunityUpdateInput = z
+  .object(updateShape)
+  .extend({
+    expectedVersion: z.number().int().min(0).optional(),
+    archived: z.boolean().optional(),
+  })
+  .strict();
 export const sectionInputs = {
   leads: leadInput,
   contacts: contactInput,

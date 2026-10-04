@@ -84,7 +84,25 @@ export async function authorizeCompany(
     actionPermissions: effective.actions,
     fieldPermissions: effective.fields,
     permissions: effective.legacyPermissions,
+    crmTeamIds: [],
   };
+  const needsCrmTeams =
+    Object.entries(effective.resources).some(
+      ([resource, grant]) =>
+        resource.startsWith("crm.") && grant.scope === "team",
+    ) ||
+    Object.values(membership.crmPermissions ?? {}).some((grants) =>
+      Object.values(grants).includes("team"),
+    );
+  if (requirements.module === "crm" && needsCrmTeams) {
+    const teams = await db
+      .collection(`companies/${companyId}/crmSalesTeams`)
+      .where("memberIds", "array-contains", user.uid)
+      .get();
+    resolvedMembership.crmTeamIds = teams.docs
+      .filter((doc) => doc.data().active !== false)
+      .map((doc) => doc.id);
+  }
   return {
     ok: true,
     access: {

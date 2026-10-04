@@ -46,6 +46,8 @@ export function NotificationMenu({ companyId }: { companyId: string }) {
             {notes.map((n) => {
               const channel =
                 n.relatedRecord?.type === "channel" && n.relatedRecord.id;
+              const opportunity =
+                n.relatedRecord?.type === "opportunity" && n.relatedRecord.id;
               const content = (
                 <>
                   <p className="text-sm font-bold">
@@ -54,11 +56,15 @@ export function NotificationMenu({ companyId }: { companyId: string }) {
                   <p className="mt-1 text-xs leading-5 muted">{n.message}</p>
                 </>
               );
-              return channel ? (
+              return channel || opportunity ? (
                 <Link
                   className="block border-b border-[var(--border)] p-4 last:border-0 hover:bg-[var(--soft)]"
                   key={n.id}
-                  href={`/workspace/${companyId}/discuss?channel=${channel}${n.relatedRecord?.messageId ? `&message=${n.relatedRecord.messageId}` : ""}`}
+                  href={
+                    opportunity
+                      ? `/workspace/${companyId}/crm/opportunities/${opportunity}`
+                      : `/workspace/${companyId}/discuss?channel=${channel}${n.relatedRecord?.messageId ? `&message=${n.relatedRecord.messageId}` : ""}`
+                  }
                 >
                   {content}
                 </Link>

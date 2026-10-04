@@ -11,6 +11,7 @@ export const DEFAULT_CRM_STAGES = [
   { name: "Proposition", stageType: "OPEN", probability: 60 },
   { name: "Negotiation", stageType: "OPEN", probability: 80 },
   { name: "Won", stageType: "WON", probability: 100, folded: true },
+  { name: "Lost", stageType: "LOST", probability: 0, folded: true },
 ] as const;
 
 export function createDefaultCrmStages(

@@ -15,7 +15,7 @@ const keys = [
   "contacts.manage",
   "sales.manage",
 ] as const;
-const crmScope = z.enum(["none", "own", "department", "all"]);
+const crmScope = z.enum(["none", "own", "team", "department", "all"]);
 const crmSection = z.object({
   view: crmScope.default("none"),
   create: z.boolean().default(false),
