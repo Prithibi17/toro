@@ -82,8 +82,8 @@ export type Membership = {
   companyId: string;
   companyName: string;
   companyLogo?: string;
-  role: "owner" | "admin" | "manager" | "employee" | "intern";
-  status: "active" | "invited" | "suspended";
+  role: "owner" | "admin" | "manager" | "employee" | "intern" | "portal";
+  status: "pending" | "active" | "invited" | "suspended" | "removed";
   userType?: UserType;
   roleIds?: string[];
   appAccess?: Partial<Record<ModuleKey, AppAccessLevel>>;
@@ -96,6 +96,8 @@ export type Membership = {
   departmentIds?: string[];
   permissions?: Partial<Record<PermissionKey, boolean>>;
   crmPermissions?: CrmPermissionSet;
+  /** Human-facing CAN/CANNOT exceptions keyed by Toro's stable permission catalog. */
+  permissionOverrides?: Record<string, "allow" | "deny">;
   /** Resolved from active company sales teams by server authorization. */
   crmTeamIds?: string[];
 };

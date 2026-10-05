@@ -5,6 +5,8 @@ import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { appendAudit } from "@/lib/audit";
 import type { PermissionKey } from "@/lib/types";
+import { MODULES } from "@/lib/types";
+import { SIMPLE_PERMISSIONS } from "@/lib/permission-catalog";
 const keys = [
   "members.manage",
   "apps.manage",
@@ -42,6 +44,16 @@ const updateInput = z.object({
   roleIds: z.array(z.string().min(1)).max(20).optional(),
   status: z.enum(["active", "suspended"]).optional(),
   accessExpiresAt: z.string().datetime().nullable().optional(),
+  departmentIds: z.array(z.string().min(1)).max(20).optional(),
+  appAccess: z
+    .record(
+      z.enum(MODULES.map((module) => module.key) as [string, ...string[]]),
+      z.enum(["none", "user"]),
+    )
+    .optional(),
+  permissionOverrides: z
+    .record(z.string(), z.enum(["allow", "deny"]))
+    .optional(),
 });
 export async function POST(
   req: Request,
@@ -252,20 +264,30 @@ export async function PATCH(
     )
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
     if (
-      current.role === "owner" &&
-      (data.status === "suspended" || (data.role && data.role !== "admin"))
-    ) {
-      const administrators = await db
-        .collection(`companies/${companyId}/members`)
-        .where("status", "==", "active")
-        .where("role", "in", ["owner", "admin"])
-        .get();
-      if (administrators.size <= 1)
-        return NextResponse.json(
-          { error: "The last company administrator cannot be removed" },
-          { status: 409 },
-        );
-    }
+      data.permissionOverrides &&
+      Object.keys(data.permissionOverrides).some(
+        (key) =>
+          !SIMPLE_PERMISSIONS.some((permission) => permission.key === key),
+      )
+    )
+      return NextResponse.json(
+        { error: "Unknown access permission" },
+        { status: 400 },
+      );
+    if (
+      authz.access.membership.role !== "owner" &&
+      (data.role === "admin" ||
+        data.permissionOverrides?.["employees.manage"] === "allow")
+    )
+      return NextResponse.json(
+        { error: "Only the owner can grant protected administration" },
+        { status: 403 },
+      );
+    if (current.role === "owner" && (data.status === "suspended" || data.role))
+      return NextResponse.json(
+        { error: "Transfer ownership before changing the Owner" },
+        { status: 409 },
+      );
     if (data.roleIds) {
       const roleDocuments = await Promise.all(
         data.roleIds.map((id) =>
@@ -292,6 +314,11 @@ export async function PATCH(
     const update = {
       ...(data.role ? { role: data.role } : {}),
       ...(data.roleIds ? { roleIds: data.roleIds } : {}),
+      ...(data.departmentIds ? { departmentIds: data.departmentIds } : {}),
+      ...(data.appAccess ? { appAccess: data.appAccess } : {}),
+      ...(data.permissionOverrides
+        ? { permissionOverrides: data.permissionOverrides }
+        : {}),
       ...(data.status ? { status: data.status } : {}),
       ...(data.accessExpiresAt !== undefined
         ? {
@@ -322,7 +349,20 @@ export async function PATCH(
             : "security.member.access_updated",
         entityType: "member",
         entityId: data.userId,
-        metadata: { permissionVersionChanged: true },
+        metadata: {
+          permissionVersionChanged: true,
+          role: data.role ?? current.role,
+          addedAccess: JSON.stringify(
+            Object.entries(data.permissionOverrides ?? {})
+              .filter(([, effect]) => effect === "allow")
+              .map(([key]) => key),
+          ),
+          restrictions: JSON.stringify(
+            Object.entries(data.permissionOverrides ?? {})
+              .filter(([, effect]) => effect === "deny")
+              .map(([key]) => key),
+          ),
+        },
       },
       batch,
     );

@@ -337,12 +337,14 @@ export function EmployeeManager({
                 </button>
                 {menu === m.id && (
                   <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl">
-                    <a
-                      className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--soft)]"
-                      href={`/workspace/${companyId}/settings/security`}
-                    >
-                      Manage permissions
-                    </a>
+                    {m.role !== "owner" && (
+                      <a
+                        className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--soft)]"
+                        href={`/workspace/${companyId}/employees/${m.id}/access`}
+                      >
+                        Manage access
+                      </a>
+                    )}
                     {m.status === "active" && m.role !== "owner" && (
                       <>
                         <div className="my-1 border-t border-[var(--border)]" />

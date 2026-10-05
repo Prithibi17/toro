@@ -9,10 +9,21 @@ import {
   effectivePermissions,
   legacyPermissionAllowed,
 } from "./permission-engine";
+import { simplePermissionAllowed } from "./permission-catalog";
 export function hasPermission(
   membership: Membership,
   permission: PermissionKey,
 ) {
+  const simpleKey: Partial<Record<PermissionKey, string>> = {
+    "members.manage": "employees.manage",
+    "tasks.assign": "todo.assign",
+    "crm.manage": "crm.pipeline.configure",
+    "contacts.manage": "contacts.create",
+    "sales.manage": "sales.quotation.create",
+  };
+  const mapped = simpleKey[permission];
+  if (mapped && membership.permissionOverrides?.[mapped])
+    return simplePermissionAllowed(membership, mapped);
   return legacyPermissionAllowed(
     membership,
     effectivePermissions(membership),
@@ -34,6 +45,11 @@ export function canReadTask(
 ) {
   if (isCompanyAdministrator(membership)) return true;
   if (
+    membership.permissionOverrides?.["todo.company_view"] === "allow" &&
+    simplePermissionAllowed(membership, "todo.company_view", "todo")
+  )
+    return true;
+  if (
     task.creatorId === userId ||
     task.assigneeIds?.includes(userId) ||
     task.viewerIds?.includes(userId)
@@ -53,6 +69,21 @@ export function crmGrant(
 ): CrmScope | boolean {
   if (membership.role === "owner")
     return ["view", "edit", "delete", "assign"].includes(action) ? "all" : true;
+  const simpleKey =
+    section === "opportunities" && action === "view"
+      ? "crm.opportunity.company_view"
+      : section === "opportunities" && action === "assign"
+        ? "crm.opportunity.assign"
+        : section === "opportunities" && action === "delete"
+          ? "crm.opportunity.delete"
+          : section === "pipelines" && action === "manage"
+            ? "crm.pipeline.configure"
+            : null;
+  if (simpleKey && membership.permissionOverrides?.[simpleKey]) {
+    const allowed = simplePermissionAllowed(membership, simpleKey, "crm");
+    if (!allowed) return action === "view" ? "none" : false;
+    return ["view", "edit", "delete", "assign"].includes(action) ? "all" : true;
+  }
   const override = membership.crmPermissions?.[section]?.[action];
   if (override !== undefined) return override;
   const resource =
@@ -85,6 +116,13 @@ export function crmGrant(
     return ["view", "edit", "delete", "assign"].includes(action) ? "all" : true;
   if (action === "view")
     return membership.role === "manager" ? "department" : "own";
+  if (action === "create") return true;
+  if (action === "edit")
+    return membership.role === "manager" ? "department" : "own";
+  if (action === "moveStage" || action === "close") return true;
+  if (action === "assign") return membership.role === "manager";
+  if (action === "delete")
+    return membership.role === "manager" ? "department" : false;
   return false;
 }
 export function crmRecordAllowed(

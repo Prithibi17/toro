@@ -50,24 +50,57 @@ const groups: NavGroup[] = [
         privileged: true,
       },
       {
-        id: "users",
-        label: "Users",
-        keywords: "members employees invited portal access",
-        icon: <Users size={16} />,
-        privileged: true,
-      },
-      {
         id: "companies",
         label: "Companies",
         keywords: "workspaces company switching",
         icon: <Building2 size={16} />,
         privileged: true,
       },
+    ],
+  },
+  {
+    label: "Access & Security",
+    items: [
+      {
+        id: "users",
+        label: "Members",
+        keywords: "members employees invited portal access",
+        icon: <Users size={16} />,
+        privileged: true,
+      },
       {
         id: "permissions",
-        label: "Permissions & Roles",
-        keywords: "permissions roles record rules approval portal security",
+        label: "Roles",
+        keywords: "roles custom authority inheritance",
         icon: <ShieldCheck size={16} />,
+        privileged: true,
+      },
+      {
+        id: "access/organization",
+        label: "Departments & Teams",
+        keywords: "departments teams organization",
+        icon: <Users size={16} />,
+        privileged: true,
+      },
+      {
+        id: "access/apps",
+        label: "App Access",
+        keywords: "applications member app access",
+        icon: <AppWindow size={16} />,
+        privileged: true,
+      },
+      {
+        id: "security/audit",
+        label: "Audit Log",
+        keywords: "history actor action target result",
+        icon: <ShieldCheck size={16} />,
+        privileged: true,
+      },
+      {
+        id: "access/advanced",
+        label: "Advanced",
+        keywords: "field access approval limits security policies",
+        icon: <KeyRound size={16} />,
         privileged: true,
       },
     ],
@@ -159,13 +192,6 @@ const groups: NavGroup[] = [
         label: "Sessions",
         keywords: "active sessions devices revoke",
         icon: <Users size={16} />,
-        privileged: true,
-      },
-      {
-        id: "security/audit",
-        label: "Audit Log",
-        keywords: "history actor action target result",
-        icon: <ShieldCheck size={16} />,
         privileged: true,
       },
     ],
@@ -299,6 +325,65 @@ function SettingsContent(props: Parameters<typeof SettingsWorkspace>[0]) {
     );
   if (selected === "permissions")
     return <RolesView companyId={companyId} roles={roles} />;
+  if (selected === "access/organization")
+    return (
+      <Rows
+        rows={[
+          {
+            title: "Departments & Teams",
+            description:
+              "Departments and sales teams define reporting, visibility, and assignment context.",
+            action: (
+              <LinkButton href={`/workspace/${companyId}/employees`}>
+                Manage members
+              </LinkButton>
+            ),
+          },
+        ]}
+      />
+    );
+  if (selected === "access/apps")
+    return (
+      <Rows
+        rows={[
+          {
+            title: "Member app access",
+            description:
+              "Open a member to turn individual workspace applications on or off.",
+            action: (
+              <LinkButton href={`/workspace/${companyId}/employees`}>
+                Configure
+              </LinkButton>
+            ),
+          },
+        ]}
+      />
+    );
+  if (selected === "access/advanced")
+    return (
+      <Rows
+        rows={[
+          {
+            title: "Field Access",
+            description:
+              "Advanced field visibility, masking, and read-only policies remain managed by enterprise roles.",
+            value: "Advanced",
+          },
+          {
+            title: "Approval Limits",
+            description:
+              "Role-based approval ceilings for sensitive financial operations.",
+            value: "Advanced",
+          },
+          {
+            title: "Security Policies",
+            description:
+              "Protected rules prevent ownership and security privilege escalation.",
+            value: "Enforced",
+          },
+        ]}
+      />
+    );
   if (selected === "security/audit") return <AuditView audits={audits} />;
   if (selected === "security/sessions")
     return (

@@ -15,6 +15,7 @@ import {
 } from "@/lib/contact-model";
 import { getAdmin } from "@/lib/firebase-admin";
 import { z } from "zod";
+import { can } from "@/lib/can";
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ companyId: string; contactId: string }> },
@@ -26,7 +27,10 @@ export async function PATCH(
       { error: "Access denied" },
       { status: authorizationStatus(auth.reason) },
     );
-  if (!hasPermission(auth.access.membership, "contacts.manage"))
+  if (
+    !can(auth.access, "contacts.edit", "contacts") &&
+    !hasPermission(auth.access.membership, "contacts.manage")
+  )
     return NextResponse.json({ error: "Access denied" }, { status: 403 });
   try {
     const raw = (await req.json()) as Record<string, unknown>;

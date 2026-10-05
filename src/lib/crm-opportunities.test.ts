@@ -154,17 +154,17 @@ describe("CRM transactional mutations", () => {
       probability: 17,
     });
   });
-  it("denies edits by read-only members and access to another company", async () => {
+  it("lets employees edit their own records and denies access to another company", async () => {
     await expect(
       updateOpportunity("a", "deal", access("employee"), {
         priority: 2,
         expectedVersion: 1,
       }),
-    ).rejects.toMatchObject({ status: 403 });
+    ).resolves.toMatchObject({ priority: 2 });
     await expect(
       updateOpportunity("b", "deal", access(), {
         priority: 2,
-        expectedVersion: 1,
+        expectedVersion: 2,
       }),
     ).rejects.toMatchObject({ status: 404 });
   });

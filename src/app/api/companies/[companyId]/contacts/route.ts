@@ -15,6 +15,7 @@ import {
 } from "@/lib/contact-model";
 import { getAdmin } from "@/lib/firebase-admin";
 import { z } from "zod";
+import { can } from "@/lib/can";
 const serialize = (d: FirebaseFirestore.QueryDocumentSnapshot) => ({
   id: d.id,
   ...d.data(),
@@ -42,7 +43,9 @@ export async function GET(
     records: snap.docs
       .filter((d) => Boolean(d.data().archived) === archived)
       .map(serialize),
-    canCreate: hasPermission(auth.access.membership, "contacts.manage"),
+    canCreate:
+      can(auth.access, "contacts.create", "contacts") ||
+      hasPermission(auth.access.membership, "contacts.manage"),
   });
 }
 export async function POST(
@@ -50,15 +53,17 @@ export async function POST(
   { params }: { params: Promise<{ companyId: string }> },
 ) {
   const { companyId } = await params,
-    auth = await authorizeCompany(companyId, {
-      module: "contacts",
-      permission: "contacts.manage",
-    });
+    auth = await authorizeCompany(companyId, { module: "contacts" });
   if (!auth.ok)
     return NextResponse.json(
       { error: "Access denied" },
       { status: authorizationStatus(auth.reason) },
     );
+  if (
+    !can(auth.access, "contacts.create", "contacts") &&
+    !hasPermission(auth.access.membership, "contacts.manage")
+  )
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
   try {
     const raw = (await req.json()) as Record<string, unknown>,
       allowDuplicate = raw.allowDuplicate === true;
