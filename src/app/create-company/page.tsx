@@ -1,2 +1,7 @@
-import{redirect}from"next/navigation";import Link from"next/link";import{ArrowLeft}from"lucide-react";import{currentUser}from"@/lib/session";import{CompanyWizard}from"@/components/company-wizard";import{Logo}from"@/components/logo";
-export default async function CreateCompany(){if(!await currentUser())redirect('/login');return <main className="min-h-screen p-5 sm:p-10"><header className="mx-auto flex max-w-5xl items-center justify-between"><Logo/><Link className="btn btn-secondary" href="/select-company"><ArrowLeft size={16}/>Workspaces</Link></header><section className="py-12"><CompanyWizard/></section></main>}
+import { redirect } from "next/navigation";
+import { currentUser } from "@/lib/session";
+
+export default async function CreateCompany() {
+  if (!(await currentUser())) redirect("/login");
+  redirect("/select-company");
+}

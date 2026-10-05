@@ -6,8 +6,13 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
+  CalendarClock,
+  FileText,
+  MessageSquare,
+  MoreHorizontal,
   Plus,
   Paperclip,
+  StickyNote,
 } from "lucide-react";
 import {
   Priority,
@@ -74,6 +79,11 @@ export function OpportunityRecord({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [note, setNote] = useState(""),
+    [recordTab, setRecordTab] = useState<"notes" | "extra">("notes"),
+    [relatedPanel, setRelatedPanel] = useState<
+      "" | "activities" | "quotations"
+    >(""),
+    [chatterMode, setChatterMode] = useState<"message" | "note" | "">(""),
     [navigation, setNavigation] = useState<{
       ids: string[];
       returnUrl: string;
@@ -148,6 +158,25 @@ export function OpportunityRecord({
       (c) => c.id === (record.customerId ?? record.contactId),
     ),
     position = navigation.ids.indexOf(record.id);
+  const humanChange = (key: string, value: unknown) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const id = String(value);
+    if (key === "stageId")
+      return title(stages.find((stage) => stage.id === id) ?? { id: "Stage" });
+    if (["ownerId", "assignedUserId"].includes(key))
+      return title(
+        members.find((member) => member.id === id) ?? { id: "Former Member" },
+      );
+    if (["contactId", "customerId"].includes(key))
+      return title(
+        contacts.find((contact) => contact.id === id) ?? {
+          id: "Unavailable contact",
+        },
+      );
+    if (key === "priority") return priorityStars(value);
+    if (typeof value === "object") return "Updated";
+    return String(value);
+  };
   async function schedule(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fields = Object.fromEntries(new FormData(e.currentTarget));
@@ -183,9 +212,9 @@ export function OpportunityRecord({
     "description",
   ];
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div>
+      <header className="flex flex-wrap items-end justify-between gap-3 pb-3">
+        <div className="min-w-0">
           <Link
             href={navigation.returnUrl}
             className="flex items-center gap-1 text-sm text-[var(--accent)]"
@@ -193,11 +222,11 @@ export function OpportunityRecord({
             <ArrowLeft size={15} />
             Pipeline
           </Link>
-          <h1 className="mt-2 text-2xl font-extrabold">
+          <h1 className="mt-1 truncate text-2xl font-extrabold">
             {String(record.name)}
           </h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-1">
           {position >= 0 && (
             <span className="py-2 text-sm muted">
               {position + 1} / {navigation.ids.length}
@@ -208,7 +237,7 @@ export function OpportunityRecord({
               <Link
                 key={i}
                 aria-label={i ? "Next opportunity" : "Previous opportunity"}
-                className="btn btn-secondary"
+                className="btn btn-secondary !p-2"
                 href={`/workspace/${companyId}/crm/opportunities/${navigation.ids[index]}`}
               >
                 {i ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -225,540 +254,635 @@ export function OpportunityRecord({
           {error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {permissions.quotation && (
-          <button
-            disabled={busy}
-            className="btn btn-primary"
-            onClick={() => setDialog("quotation")}
-          >
-            New quotation
-          </button>
-        )}
-        {permissions.close && (
-          <>
-            <button
-              disabled={busy || record.status === "won"}
-              className="btn btn-secondary"
-              onClick={() =>
-                void run(async () => {
-                  const stage = stages.find((s) => s.stageType === "WON");
-                  if (!stage) throw new Error("Configure a Won stage first.");
-                  await patch({ stageId: stage.id });
-                })
-              }
-            >
-              Won
-            </button>
-            <button
-              disabled={busy || record.status === "lost"}
-              className="btn btn-secondary"
-              onClick={() => setDialog("lost")}
-            >
-              Lost
-            </button>
-            {["won", "lost"].includes(String(record.status)) && (
+      <section className="border border-[var(--border)] bg-[var(--panel)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] p-2">
+          <div className="flex flex-wrap gap-2">
+            {permissions.quotation && (
               <button
                 disabled={busy}
-                className="btn btn-secondary"
-                onClick={() =>
-                  void run(async () => {
-                    const stage = stages.find((s) => s.stageType === "OPEN");
-                    if (!stage)
-                      throw new Error("Configure an open stage first.");
-                    await patch({ stageId: stage.id });
-                  })
-                }
+                className="btn btn-primary !py-2"
+                onClick={() => setDialog("quotation")}
               >
-                Reopen
+                New quotation
               </button>
             )}
-          </>
-        )}
-        {permissions.edit && (
-          <button
-            className="btn btn-secondary"
-            disabled={busy || editing}
-            onClick={() =>
-              void run(() => patch({ archived: !record.archived }))
-            }
-          >
-            {record.archived ? "Unarchive" : "Archive"}
-          </button>
-        )}
-        {permissions.edit && (
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              setForm(record);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </button>
-        )}
-        {permissions.activity && (
-          <button
-            className="btn btn-secondary"
-            onClick={() => setDialog("activity")}
-          >
-            Schedule activity
-          </button>
-        )}
-        <a className="btn btn-secondary" href="#quotations">
-          Quotations {quotations.length}
-        </a>
-        <a className="btn btn-secondary" href="#activities">
-          Activities {activities.filter((a) => a.status === "scheduled").length}
-        </a>
-      </div>
-      <div className="flex gap-1 overflow-auto border-y border-[var(--border)] py-3">
-        {stages.map((stage) => (
-          <button
-            key={stage.id}
-            disabled={busy || !permissions.move}
-            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold ${record.stageId === stage.id ? "bg-[var(--accent)] text-white" : "bg-[var(--soft)]"}`}
-            onClick={() =>
-              stage.stageType === "LOST"
-                ? setDialog("lost")
-                : void run(() => patch({ stageId: stage.id }))
-            }
-          >
-            {title(stage)}
-          </button>
-        ))}
-      </div>
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <main className="min-w-0 space-y-5">
-          {editing ? (
-            <form
-              className="panel grid gap-4 p-5 sm:grid-cols-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(async () => {
-                  const updates = Object.fromEntries(
-                    [
-                      ...editable,
-                      "customerId",
-                      "ownerId",
-                      "salesTeamId",
-                      "tags",
-                      "priority",
-                    ]
-                      .filter(
-                        (key) =>
-                          JSON.stringify(form[key]) !==
-                          JSON.stringify(record[key]),
-                      )
-                      .map((key) => [key, form[key]]),
-                  );
-                  await patch(updates);
-                  setEditing(false);
-                });
-              }}
-            >
-              {editable.map((key) => (
-                <Field
-                  key={key}
-                  label={key === "value" ? "Expected revenue" : key}
-                >
-                  {key === "description" ? (
-                    <textarea
-                      className="input"
-                      value={String(form[key] ?? "")}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, [key]: e.target.value }))
-                      }
-                    />
-                  ) : (
-                    <input
-                      className="input"
-                      value={String(form[key] ?? "")}
-                      type={
-                        ["value", "probability"].includes(key)
-                          ? "number"
-                          : key === "expectedCloseDate"
-                            ? "date"
-                            : key === "email"
-                              ? "email"
-                              : "text"
-                      }
-                      min={
-                        ["value", "probability"].includes(key) ? 0 : undefined
-                      }
-                      max={key === "probability" ? 100 : undefined}
-                      step="any"
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          [key]: ["value", "probability"].includes(key)
-                            ? Number(e.target.value)
-                            : e.target.value,
-                        }))
-                      }
-                    />
-                  )}
-                </Field>
-              ))}
-              {(["customerId", "ownerId", "salesTeamId"] as const).map(
-                (key) => (
-                  <Field
-                    key={key}
-                    label={
-                      key === "customerId"
-                        ? "Contact"
-                        : key === "ownerId"
-                          ? "Salesperson"
-                          : "Sales team"
-                    }
-                  >
-                    <select
-                      className="input"
-                      disabled={key !== "customerId" && !permissions.assign}
-                      value={String(form[key] ?? "")}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          [key]: e.target.value || null,
-                        }))
-                      }
-                    >
-                      <option value="">Unassigned</option>
-                      {(key === "customerId"
-                        ? contacts
-                        : key === "ownerId"
-                          ? members
-                          : teams
-                      ).map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {title(r)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                ),
-              )}
-              <Field label="Tags">
-                <TagSelector
-                  companyId={companyId}
-                  tags={tags as SharedTag[]}
-                  value={(form.tags as string[]) ?? []}
-                  canCreate={permissions.tagManage}
-                  onChange={(tagIds) =>
-                    setForm((current) => ({ ...current, tags: tagIds }))
+            {permissions.close && (
+              <>
+                <button
+                  disabled={busy || record.status === "won"}
+                  className="btn btn-secondary !py-2"
+                  onClick={() =>
+                    void run(async () => {
+                      const stage = stages.find((s) => s.stageType === "WON");
+                      if (!stage)
+                        throw new Error("Configure a Won stage first.");
+                      await patch({ stageId: stage.id });
+                    })
                   }
-                />
-              </Field>
-              <Field label="Priority">
-                <Priority
-                  value={form.priority}
-                  onChange={(priority) => setForm((f) => ({ ...f, priority }))}
-                />
-              </Field>
-              <div className="flex gap-2 sm:col-span-2">
-                <button disabled={busy || !dirty} className="btn btn-primary">
-                  Save
+                >
+                  Won
                 </button>
                 <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setEditing(false)}
+                  disabled={busy || record.status === "lost"}
+                  className="btn btn-secondary !py-2"
+                  onClick={() => setDialog("lost")}
                 >
-                  Discard
+                  Lost
                 </button>
-              </div>
-            </form>
-          ) : (
-            <section className="panel grid gap-5 p-5 sm:grid-cols-2">
-              <Value label="Expected revenue">{money(record.value)}</Value>
-              <Value label="Probability">
-                {String(record.probability ?? 0)}%
-              </Value>
-              <Value label="Contact">
-                {customer ? (
-                  <Link
-                    className="text-[var(--accent)]"
-                    href={`/workspace/${companyId}/contacts/${customer.id}`}
+              </>
+            )}
+            <details className="relative">
+              <summary className="btn btn-secondary cursor-pointer list-none !py-2">
+                <MoreHorizontal size={16} /> Actions
+              </summary>
+              <div className="absolute left-0 top-11 z-30 w-44 rounded-lg border border-[var(--border)] bg-[var(--panel)] p-1 shadow-xl">
+                {permissions.edit && (
+                  <>
+                    <button
+                      className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--soft)]"
+                      onClick={() => {
+                        setForm(record);
+                        setEditing(true);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--soft)]"
+                      onClick={() =>
+                        void run(() => patch({ archived: !record.archived }))
+                      }
+                    >
+                      {record.archived ? "Unarchive" : "Archive"}
+                    </button>
+                  </>
+                )}
+                {permissions.activity && (
+                  <button
+                    className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--soft)]"
+                    onClick={() => setDialog("activity")}
                   >
-                    {title(customer)}
-                  </Link>
-                ) : (
-                  "No contact"
+                    Schedule activity
+                  </button>
                 )}
-              </Value>
-              <Value label="Salesperson">
-                {title(
-                  members.find((m) => m.id === record.ownerId) ?? {
-                    id: "Unassigned",
-                  },
-                )}
-              </Value>
-              <Value label="Email">
-                {String(record.email || customer?.email || "—")}
-              </Value>
-              <Value label="Phone">
-                {String(record.phone || customer?.phone || "—")}
-              </Value>
-              <Value label="Priority">
-                <Priority
-                  value={normalizePriority(record.priority)}
-                  disabled={busy || !permissions.edit}
-                  onChange={(priority) => void run(() => patch({ priority }))}
-                />
-              </Value>
-              <Value label="Expected closing">
-                {String(record.expectedCloseDate || "—")}
-              </Value>
-              <Value label="Sales team">
-                {title(
-                  teams.find((t) => t.id === record.salesTeamId) ?? {
-                    id: "Unassigned",
-                  },
-                )}
-              </Value>
-              <Value label="Tags">
-                <div className="flex flex-wrap gap-1">
-                  {((record.tags as string[]) ?? []).map((id) => {
-                    const tag = tags.find((item) => item.id === id);
-                    return (
-                      <span
-                        className="rounded-md bg-[var(--soft)] px-2 py-1 text-xs"
-                        key={id}
-                      >
-                        {String(tag?.name ?? id)}
-                      </span>
+              </div>
+            </details>
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="btn btn-secondary !py-2"
+              onClick={() =>
+                setRelatedPanel((value) =>
+                  value === "activities" ? "" : "activities",
+                )
+              }
+            >
+              <CalendarClock size={16} />
+              Activities{" "}
+              {activities.filter((a) => a.status === "scheduled").length}
+            </button>
+            <button
+              className="btn btn-secondary !py-2"
+              onClick={() =>
+                setRelatedPanel((value) =>
+                  value === "quotations" ? "" : "quotations",
+                )
+              }
+            >
+              <FileText size={16} />
+              Quotations {quotations.length}
+            </button>
+          </div>
+        </div>
+        <div className="flex overflow-auto border-b border-[var(--border)] p-2">
+          {stages.map((stage) => (
+            <button
+              key={stage.id}
+              disabled={busy || !permissions.move}
+              className={`relative min-w-28 shrink-0 border-y border-r border-[var(--border)] px-4 py-2 text-sm font-semibold first:border-l ${record.stageId === stage.id ? "bg-[var(--accent)] text-white" : "bg-[var(--soft)]"}`}
+              onClick={() =>
+                stage.stageType === "LOST"
+                  ? setDialog("lost")
+                  : void run(() => patch({ stageId: stage.id }))
+              }
+            >
+              {title(stage)}
+            </button>
+          ))}
+        </div>
+        <div className="grid xl:grid-cols-[minmax(0,68fr)_minmax(340px,32fr)]">
+          <main className="min-w-0 border-r border-[var(--border)]">
+            {editing ? (
+              <form
+                className="grid gap-4 p-5 sm:grid-cols-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    const updates = Object.fromEntries(
+                      [
+                        ...editable,
+                        "customerId",
+                        "ownerId",
+                        "salesTeamId",
+                        "tags",
+                        "priority",
+                      ]
+                        .filter(
+                          (key) =>
+                            JSON.stringify(form[key]) !==
+                            JSON.stringify(record[key]),
+                        )
+                        .map((key) => [key, form[key]]),
                     );
-                  })}
-                  {!((record.tags as string[]) ?? []).length && "—"}
-                </div>
-              </Value>
-              {["source", "medium", "campaign", "city", "country"].map(
-                (key) => (
-                  <Value label={key} key={key}>
-                    {String(record[key] || "—")}
-                  </Value>
-                ),
-              )}
-              <div className="sm:col-span-2">
-                <Value label="Notes">
-                  <p className="whitespace-pre-wrap">
-                    {String(record.description || "No notes")}
-                  </p>
-                </Value>
-              </div>
-              {record.status === "lost" && (
-                <Value label="Lost reason">
-                  {title(
-                    lostReasons.find((r) => r.id === record.lostReasonId) ?? {
-                      id: "—",
-                    },
-                  )}
-                  <p>{String(record.lostNotes ?? "")}</p>
-                </Value>
-              )}
-            </section>
-          )}
-          <section id="activities" className="panel p-5">
-            <h2 className="mb-3 font-bold">Activities</h2>
-            {activities.map((a) => (
-              <div className="border-t border-[var(--border)] py-3" key={a.id}>
-                <div className="flex justify-between gap-3">
-                  <b>{String(a.title)}</b>
-                  <span
-                    className={
-                      getActivityState(a, new Date(), timezone) === "overdue"
-                        ? "text-red-500"
-                        : "muted"
-                    }
+                    await patch(updates);
+                    setEditing(false);
+                  });
+                }}
+              >
+                {editable.map((key) => (
+                  <Field
+                    key={key}
+                    label={key === "value" ? "Expected revenue" : key}
                   >
-                    {getActivityState(a, new Date(), timezone)}
-                  </span>
-                </div>
-                <p className="text-sm muted">
-                  {String(a.type)} ·{" "}
-                  {a.dueAt
-                    ? new Date(String(a.dueAt)).toLocaleString()
-                    : "No date"}
-                </p>
-                <p className="text-sm">{String(a.description ?? "")}</p>
-                {Boolean(a.calendarEventId) && (
-                  <Link
-                    className="text-sm text-[var(--accent)]"
-                    href={`/workspace/${companyId}/calendar`}
-                  >
-                    Open Calendar
-                  </Link>
-                )}
-                {a.status === "scheduled" && a.canEdit === true && (
-                  <div className="mt-2 flex gap-2">
-                    {["completed", "cancelled"].map((status) => (
-                      <button
-                        key={status}
-                        className="btn btn-secondary !py-1 text-xs"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            await crmRequest(
-                              `/api/companies/${companyId}/crm/activities/${a.id}`,
-                              "PATCH",
-                              {
-                                status,
-                                outcome:
-                                  status === "completed"
-                                    ? (prompt("Completion note (optional)") ??
-                                      "")
-                                    : "",
-                              },
-                            );
-                            router.refresh();
-                          })
+                    {key === "description" ? (
+                      <textarea
+                        className="input"
+                        value={String(form[key] ?? "")}
+                        onChange={(e) =>
+                          setForm((f) => ({ ...f, [key]: e.target.value }))
+                        }
+                      />
+                    ) : (
+                      <input
+                        className="input"
+                        value={String(form[key] ?? "")}
+                        type={
+                          ["value", "probability"].includes(key)
+                            ? "number"
+                            : key === "expectedCloseDate"
+                              ? "date"
+                              : key === "email"
+                                ? "email"
+                                : "text"
+                        }
+                        min={
+                          ["value", "probability"].includes(key) ? 0 : undefined
+                        }
+                        max={key === "probability" ? 100 : undefined}
+                        step="any"
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            [key]: ["value", "probability"].includes(key)
+                              ? Number(e.target.value)
+                              : e.target.value,
+                          }))
+                        }
+                      />
+                    )}
+                  </Field>
+                ))}
+                {(["customerId", "ownerId", "salesTeamId"] as const).map(
+                  (key) => (
+                    <Field
+                      key={key}
+                      label={
+                        key === "customerId"
+                          ? "Contact"
+                          : key === "ownerId"
+                            ? "Salesperson"
+                            : "Sales team"
+                      }
+                    >
+                      <select
+                        className="input"
+                        disabled={key !== "customerId" && !permissions.assign}
+                        value={String(form[key] ?? "")}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            [key]: e.target.value || null,
+                          }))
                         }
                       >
-                        {status === "completed" ? "Mark Done" : "Cancel"}
+                        <option value="">Unassigned</option>
+                        {(key === "customerId"
+                          ? contacts
+                          : key === "ownerId"
+                            ? members
+                            : teams
+                        ).map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {title(r)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  ),
+                )}
+                <Field label="Tags">
+                  <TagSelector
+                    companyId={companyId}
+                    tags={tags as SharedTag[]}
+                    value={(form.tags as string[]) ?? []}
+                    canCreate={permissions.tagManage}
+                    onChange={(tagIds) =>
+                      setForm((current) => ({ ...current, tags: tagIds }))
+                    }
+                  />
+                </Field>
+                <Field label="Priority">
+                  <Priority
+                    value={form.priority}
+                    onChange={(priority) =>
+                      setForm((f) => ({ ...f, priority }))
+                    }
+                  />
+                </Field>
+                <div className="flex gap-2 sm:col-span-2">
+                  <button disabled={busy || !dirty} className="btn btn-primary">
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setEditing(false)}
+                  >
+                    Discard
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <section className="grid gap-x-10 gap-y-4 p-5 sm:grid-cols-2">
+                <Value label="Expected revenue">{money(record.value)}</Value>
+                <Value label="Probability">
+                  {String(record.probability ?? 0)}%
+                </Value>
+                <Value label="Contact">
+                  {customer ? (
+                    <Link
+                      className="text-[var(--accent)]"
+                      href={`/workspace/${companyId}/contacts/${customer.id}`}
+                    >
+                      {title(customer)}
+                    </Link>
+                  ) : (
+                    "No contact"
+                  )}
+                </Value>
+                <Value label="Salesperson">
+                  {title(
+                    members.find((m) => m.id === record.ownerId) ?? {
+                      id: "Unassigned",
+                    },
+                  )}
+                </Value>
+                <Value label="Email">
+                  {String(record.email || customer?.email || "—")}
+                </Value>
+                <Value label="Phone">
+                  {String(record.phone || customer?.phone || "—")}
+                </Value>
+                <Value label="Priority">
+                  <Priority
+                    value={normalizePriority(record.priority)}
+                    disabled={busy || !permissions.edit}
+                    onChange={(priority) => void run(() => patch({ priority }))}
+                  />
+                </Value>
+                <Value label="Expected closing">
+                  {String(record.expectedCloseDate || "—")}
+                </Value>
+                <Value label="Sales team">
+                  {title(
+                    teams.find((t) => t.id === record.salesTeamId) ?? {
+                      id: "Unassigned",
+                    },
+                  )}
+                </Value>
+                <Value label="Tags">
+                  <div className="flex flex-wrap gap-1">
+                    {((record.tags as string[]) ?? []).map((id) => {
+                      const tag = tags.find((item) => item.id === id);
+                      return (
+                        <span
+                          className="rounded-md bg-[var(--soft)] px-2 py-1 text-xs"
+                          key={id}
+                        >
+                          {String(tag?.name ?? id)}
+                        </span>
+                      );
+                    })}
+                    {!((record.tags as string[]) ?? []).length && "—"}
+                  </div>
+                </Value>
+                {record.status === "lost" && (
+                  <Value label="Lost reason">
+                    {title(
+                      lostReasons.find((r) => r.id === record.lostReasonId) ?? {
+                        id: "—",
+                      },
+                    )}
+                    <p>{String(record.lostNotes ?? "")}</p>
+                  </Value>
+                )}
+                <div className="mt-2 border-t border-[var(--border)] pt-3 sm:col-span-2">
+                  <div className="flex gap-1 border-b border-[var(--border)]">
+                    {(["notes", "extra"] as const).map((tab) => (
+                      <button
+                        type="button"
+                        key={tab}
+                        className={`border-b-2 px-4 py-2 text-sm font-semibold capitalize ${recordTab === tab ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent muted"}`}
+                        onClick={() => setRecordTab(tab)}
+                      >
+                        {tab === "extra" ? "Extra Info" : "Notes"}
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
-            ))}
-            {!activities.length && (
-              <p className="text-sm muted">No activities scheduled.</p>
-            )}
-          </section>
-          <section id="quotations" className="panel p-5">
-            <h2 className="mb-3 font-bold">Linked quotations</h2>
-            {quotations.map((q) => (
-              <details
-                className="border-t border-[var(--border)] py-3"
-                key={q.id}
-              >
-                <summary className="cursor-pointer">
-                  {String(q.title)} · {money(q.amount)} · {String(q.status)}
-                </summary>
-                <div className="mt-3 text-sm">
-                  {((q.lines as Record<string, unknown>[]) ?? []).map(
-                    (line, i) => (
-                      <p key={i}>
-                        {String(line.description)} · {String(line.quantity)} ×{" "}
-                        {money(line.unitPrice)}
-                      </p>
-                    ),
+                  {recordTab === "notes" ? (
+                    <p className="min-h-32 whitespace-pre-wrap px-2 py-4 text-sm leading-6">
+                      {String(record.description || "No notes")}
+                    </p>
+                  ) : (
+                    <div className="grid gap-x-10 gap-y-4 px-2 py-4 sm:grid-cols-2">
+                      {["source", "medium", "campaign", "city", "country"].map(
+                        (key) => (
+                          <Value label={key} key={key}>
+                            {String(record[key] || "—")}
+                          </Value>
+                        ),
+                      )}
+                    </div>
                   )}
                 </div>
-              </details>
-            ))}
-            {!quotations.length && (
-              <p className="text-sm muted">No linked quotations.</p>
+              </section>
             )}
-          </section>
-        </main>
-        <aside className="panel h-fit p-4">
-          <h2 className="mb-3 font-bold">Chatter</h2>
-          {permissions.note && (
-            <form
-              className="mb-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(async () => {
-                  await crmRequest(base + "/timeline", "POST", {
-                    body: note,
-                    eventType: "note",
-                  });
-                  setNote("");
-                  router.refresh();
-                });
-              }}
-            >
-              <Field label="Internal note">
-                <textarea
-                  className="input min-h-24"
-                  required
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Visible to authorized internal users"
-                />
-              </Field>
-              <button disabled={busy} className="btn btn-secondary mt-2">
-                Log note
-              </button>
-            </form>
-          )}
-          <div className="mb-4 border-y border-[var(--border)] py-3">
-            <b className="text-sm">Attachments</b>
-            {files.map((file) => (
-              <a
-                key={file.id}
-                className="mt-2 block truncate text-sm text-[var(--accent)]"
-                href={base + "/files/" + file.id}
+            {relatedPanel === "activities" && (
+              <section
+                id="activities"
+                className="border-t border-[var(--border)] p-5"
               >
-                {String(file.name)}
-              </a>
-            ))}
-            {permissions.note && (
-              <label className="btn btn-secondary mt-2 text-sm">
-                <Paperclip size={14} />
-                Attach file
-                <input
-                  type="file"
-                  className="hidden"
-                  disabled={busy}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file)
-                      void run(async () => {
-                        const body = new FormData();
-                        body.set("file", file);
-                        const response = await fetch(base + "/files", {
-                          method: "POST",
-                          body,
-                        });
-                        const result = await response.json();
-                        if (!response.ok) throw new Error(result.error);
-                        router.refresh();
-                      });
-                  }}
-                />
-              </label>
-            )}
-          </div>
-          <div className="space-y-3">
-            {[...events]
-              .sort((a, b) =>
-                String(b.timestamp).localeCompare(String(a.timestamp)),
-              )
-              .map((event) => (
-                <article
-                  key={event.id}
-                  className="rounded-lg bg-[var(--soft)] p-3"
-                >
-                  <p className="text-xs muted">
-                    {String(event.actorName ?? event.actorId ?? "User")} ·{" "}
-                    {event.timestamp
-                      ? new Date(String(event.timestamp)).toLocaleString()
-                      : ""}
-                  </p>
-                  <b className="mt-1 block text-sm capitalize">
-                    {String(event.eventType).replaceAll("_", " ")}
-                  </b>
-                  <p className="mt-1 whitespace-pre-wrap text-sm">
-                    {String(event.body ?? "")}
-                  </p>
-                  {Object.entries(
-                    (event.changes as Record<
-                      string,
-                      { from?: unknown; to?: unknown }
-                    >) ?? {},
-                  ).map(([key, change]) => (
-                    <p key={key} className="mt-1 break-words text-xs muted">
-                      {key}: {JSON.stringify(change?.from ?? "—")} →{" "}
-                      {JSON.stringify(change?.to ?? "—")}
+                <h2 className="mb-3 font-bold">Activities</h2>
+                {activities.map((a) => (
+                  <div
+                    className="border-t border-[var(--border)] py-3"
+                    key={a.id}
+                  >
+                    <div className="flex justify-between gap-3">
+                      <b>{String(a.title)}</b>
+                      <span
+                        className={
+                          getActivityState(a, new Date(), timezone) ===
+                          "overdue"
+                            ? "text-red-500"
+                            : "muted"
+                        }
+                      >
+                        {getActivityState(a, new Date(), timezone)}
+                      </span>
+                    </div>
+                    <p className="text-sm muted">
+                      {String(a.type)} ·{" "}
+                      {a.dueAt
+                        ? new Date(String(a.dueAt)).toLocaleString()
+                        : "No date"}
                     </p>
-                  ))}
-                </article>
+                    <p className="text-sm">{String(a.description ?? "")}</p>
+                    {Boolean(a.calendarEventId) && (
+                      <Link
+                        className="text-sm text-[var(--accent)]"
+                        href={`/workspace/${companyId}/calendar`}
+                      >
+                        Open Calendar
+                      </Link>
+                    )}
+                    {a.status === "scheduled" && a.canEdit === true && (
+                      <div className="mt-2 flex gap-2">
+                        {["completed", "cancelled"].map((status) => (
+                          <button
+                            key={status}
+                            className="btn btn-secondary !py-1 text-xs"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(async () => {
+                                await crmRequest(
+                                  `/api/companies/${companyId}/crm/activities/${a.id}`,
+                                  "PATCH",
+                                  {
+                                    status,
+                                    outcome:
+                                      status === "completed"
+                                        ? (prompt(
+                                            "Completion note (optional)",
+                                          ) ?? "")
+                                        : "",
+                                  },
+                                );
+                                router.refresh();
+                              })
+                            }
+                          >
+                            {status === "completed" ? "Mark Done" : "Cancel"}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {!activities.length && (
+                  <p className="text-sm muted">No activities scheduled.</p>
+                )}
+              </section>
+            )}
+            {relatedPanel === "quotations" && (
+              <section
+                id="quotations"
+                className="border-t border-[var(--border)] p-5"
+              >
+                <h2 className="mb-3 font-bold">Linked quotations</h2>
+                {quotations.map((q) => (
+                  <details
+                    className="border-t border-[var(--border)] py-3"
+                    key={q.id}
+                  >
+                    <summary className="cursor-pointer">
+                      {String(q.title)} · {money(q.amount)} · {String(q.status)}
+                    </summary>
+                    <div className="mt-3 text-sm">
+                      {((q.lines as Record<string, unknown>[]) ?? []).map(
+                        (line, i) => (
+                          <p key={i}>
+                            {String(line.description)} · {String(line.quantity)}{" "}
+                            × {money(line.unitPrice)}
+                          </p>
+                        ),
+                      )}
+                    </div>
+                  </details>
+                ))}
+                {!quotations.length && (
+                  <p className="text-sm muted">No linked quotations.</p>
+                )}
+              </section>
+            )}
+          </main>
+          <aside className="min-h-[560px] p-4">
+            <div className="mb-3 flex flex-wrap gap-1 border-b border-[var(--border)] pb-3">
+              {permissions.note && (
+                <>
+                  <button
+                    className={`btn !py-2 ${chatterMode === "message" ? "btn-primary" : "btn-secondary"}`}
+                    onClick={() =>
+                      setChatterMode((mode) =>
+                        mode === "message" ? "" : "message",
+                      )
+                    }
+                  >
+                    <MessageSquare size={15} /> Send Message
+                  </button>
+                  <button
+                    className={`btn !py-2 ${chatterMode === "note" ? "btn-primary" : "btn-secondary"}`}
+                    onClick={() =>
+                      setChatterMode((mode) => (mode === "note" ? "" : "note"))
+                    }
+                  >
+                    <StickyNote size={15} /> Log Note
+                  </button>
+                </>
+              )}
+              {permissions.activity && (
+                <button
+                  className="btn btn-secondary !py-2"
+                  onClick={() => setDialog("activity")}
+                >
+                  <CalendarClock size={15} /> Activity
+                </button>
+              )}
+            </div>
+            {permissions.note && chatterMode && (
+              <form
+                className="mb-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(async () => {
+                    await crmRequest(base + "/timeline", "POST", {
+                      body: note,
+                      eventType: chatterMode === "message" ? "message" : "note",
+                    });
+                    setNote("");
+                    router.refresh();
+                  });
+                }}
+              >
+                <Field
+                  label={
+                    chatterMode === "message" ? "Message" : "Internal note"
+                  }
+                >
+                  <textarea
+                    className="input min-h-24"
+                    required
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder={
+                      chatterMode === "message"
+                        ? "Write a message…"
+                        : "Visible to authorized internal users"
+                    }
+                  />
+                </Field>
+                <button disabled={busy} className="btn btn-secondary mt-2">
+                  {chatterMode === "message" ? "Send" : "Log note"}
+                </button>
+              </form>
+            )}
+            <div className="mb-4 border-y border-[var(--border)] py-3">
+              <b className="text-sm">Attachments</b>
+              {files.map((file) => (
+                <a
+                  key={file.id}
+                  className="mt-2 block truncate text-sm text-[var(--accent)]"
+                  href={base + "/files/" + file.id}
+                >
+                  {String(file.name)}
+                </a>
               ))}
-          </div>
-        </aside>
-      </div>
+              {permissions.note && (
+                <label className="btn btn-secondary mt-2 text-sm">
+                  <Paperclip size={14} />
+                  Attach file
+                  <input
+                    type="file"
+                    className="hidden"
+                    disabled={busy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file)
+                        void run(async () => {
+                          const body = new FormData();
+                          body.set("file", file);
+                          const response = await fetch(base + "/files", {
+                            method: "POST",
+                            body,
+                          });
+                          const result = await response.json();
+                          if (!response.ok) throw new Error(result.error);
+                          router.refresh();
+                        });
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+            <div>
+              {[...events]
+                .sort((a, b) =>
+                  String(b.timestamp).localeCompare(String(a.timestamp)),
+                )
+                .map((event) => (
+                  <article
+                    key={event.id}
+                    className="border-t border-[var(--border)] py-4 first:border-0"
+                  >
+                    <div className="flex gap-3">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--soft)] text-xs font-bold">
+                        {initials(String(event.actorName ?? "Former Member"))}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs muted">
+                          {String(event.actorName ?? "Former Member")} ·{" "}
+                          {event.timestamp
+                            ? new Date(String(event.timestamp)).toLocaleString()
+                            : ""}
+                        </p>
+                        <b className="mt-1 block text-sm capitalize">
+                          {eventTitle(String(event.eventType))}
+                        </b>
+                        <p className="mt-1 whitespace-pre-wrap text-sm">
+                          {String(event.body ?? "")}
+                        </p>
+                        {Object.entries(
+                          (event.changes as Record<
+                            string,
+                            { from?: unknown; to?: unknown }
+                          >) ?? {},
+                        ).map(([key, change]) => (
+                          <p
+                            key={key}
+                            className="mt-1 break-words text-xs muted"
+                          >
+                            {changeLabel(key)}: {humanChange(key, change?.from)}{" "}
+                            → {humanChange(key, change?.to)}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+            </div>
+          </aside>
+        </div>
+      </section>
       {dialog === "lost" && (
         <Modal title="Mark opportunity lost" close={() => setDialog("")}>
           <form
@@ -937,4 +1061,45 @@ function Value({
       <div className="mt-1 text-sm font-semibold">{children}</div>
     </div>
   );
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function eventTitle(eventType: string) {
+  const labels: Record<string, string> = {
+    created: "Opportunity created",
+    opportunity_created: "Opportunity created",
+    stage_changed: "Stage changed",
+    priority_changed: "Priority changed",
+    note: "Internal note",
+    message: "Message sent",
+    updated: "Opportunity updated",
+  };
+  return labels[eventType] ?? eventType.replaceAll("_", " ");
+}
+
+function changeLabel(key: string) {
+  const labels: Record<string, string> = {
+    stageId: "Stage",
+    customerId: "Contact",
+    contactId: "Contact",
+    ownerId: "Salesperson",
+    assignedUserId: "Assigned user",
+    expectedCloseDate: "Expected closing",
+    value: "Expected revenue",
+    salesTeamId: "Sales team",
+  };
+  return labels[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function priorityStars(value: unknown) {
+  const count = normalizePriority(value);
+  return `${"★".repeat(count)}${"☆".repeat(3 - count)}`;
 }

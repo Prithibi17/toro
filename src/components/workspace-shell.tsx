@@ -16,7 +16,6 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  Plus,
   ReceiptText,
   Settings,
   ShoppingCart,
@@ -201,12 +200,6 @@ export function WorkspaceShell({
                 href="/select-company"
                 icon={<Grid2X2 size={15} />}
                 label="All workspaces"
-                close={() => setCompanyMenu(false)}
-              />
-              <MenuLink
-                href="/create-company"
-                icon={<Plus size={15} />}
-                label="Create company"
                 close={() => setCompanyMenu(false)}
               />
               <MenuLink

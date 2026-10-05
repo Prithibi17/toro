@@ -160,18 +160,32 @@ export async function POST(
       });
       return NextResponse.json({ status: "active" }, { status: 201 });
     }
-    const ref = db.collection(`companies/${companyId}/invitations`).doc();
+    const invitationCollection = db.collection(
+      `companies/${companyId}/invitations`,
+    );
+    const existingInvitations = await invitationCollection
+      .where("email", "==", data.email.toLowerCase())
+      .limit(20)
+      .get();
+    const existingPending = existingInvitations.docs.find(
+      (invitation) => invitation.data().status === "pending",
+    );
+    const ref = existingPending?.ref ?? invitationCollection.doc();
     const batch = db.batch();
-    batch.create(ref, {
+    const invitationData = {
       ...data,
       email: data.email.toLowerCase(),
       permissions,
       status: "pending",
       permissionVersion: 1,
       createdBy: ctx.user.uid,
-      createdAt: FieldValue.serverTimestamp(),
+      ...(existingPending
+        ? { updatedAt: FieldValue.serverTimestamp() }
+        : { createdAt: FieldValue.serverTimestamp() }),
       expiresAt: new Date(Date.now() + 7 * 86400000),
-    });
+    };
+    if (existingPending) batch.set(ref, invitationData, { merge: true });
+    else batch.create(ref, invitationData);
     appendAudit(
       db,
       companyId,
@@ -185,7 +199,15 @@ export async function POST(
       batch,
     );
     await batch.commit();
-    return NextResponse.json({ status: "pending" }, { status: 201 });
+    return NextResponse.json(
+      {
+        status: "pending",
+        invitationId: ref.id,
+        message:
+          "Invitation is pending. It will activate automatically after this email creates and verifies a Toro account.",
+      },
+      { status: 201 },
+    );
   } catch (e) {
     return NextResponse.json(
       {

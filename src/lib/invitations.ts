@@ -1,6 +1,38 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getAdmin } from "./firebase-admin";
 
+async function pendingInvitationsForEmail(
+  db: FirebaseFirestore.Firestore,
+  normalizedEmail: string,
+) {
+  try {
+    return (
+      await db
+        .collectionGroup("invitations")
+        .where("email", "==", normalizedEmail)
+        .where("status", "==", "pending")
+        .get()
+    ).docs;
+  } catch {
+    // A newly configured Firebase project may not have deployed the optional
+    // collection-group composite index yet. Fall back to ordinary collection
+    // queries so account activation is never dependent on that deployment.
+    const companies = await db.collection("companies").select().get();
+    const matches = await Promise.all(
+      companies.docs.map((company) =>
+        company.ref
+          .collection("invitations")
+          .where("email", "==", normalizedEmail)
+          .limit(20)
+          .get(),
+      ),
+    );
+    return matches.flatMap((snapshot) =>
+      snapshot.docs.filter((invite) => invite.data().status === "pending"),
+    );
+  }
+}
+
 export async function activatePendingInvitations(
   uid: string,
   email: string | undefined,
@@ -9,13 +41,9 @@ export async function activatePendingInvitations(
   if (!email || !emailVerified) return 0;
   const { db } = getAdmin();
   const normalized = email.trim().toLowerCase();
-  const invitations = await db
-    .collectionGroup("invitations")
-    .where("email", "==", normalized)
-    .where("status", "==", "pending")
-    .get();
+  const invitations = await pendingInvitationsForEmail(db, normalized);
   let activated = 0;
-  for (const inviteSnap of invitations.docs) {
+  for (const inviteSnap of invitations) {
     const companyRef = inviteSnap.ref.parent.parent;
     if (!companyRef) continue;
     const companyId = companyRef.id;

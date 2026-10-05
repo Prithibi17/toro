@@ -5,6 +5,7 @@ import { getAdmin } from "@/lib/firebase-admin";
 import { companySchema } from "@/lib/validation";
 import { MODULES } from "@/lib/types";
 import { createDefaultCrmStages } from "@/lib/crm-defaults";
+import { WORKSPACE_CREATION_ENABLED } from "@/lib/workspace-policy";
 
 export async function GET() {
   const user = await currentUser();
@@ -28,6 +29,14 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Authentication required" },
       { status: 401 },
+    );
+  if (!WORKSPACE_CREATION_ENABLED)
+    return NextResponse.json(
+      {
+        error:
+          "New workspace creation is disabled. Existing workspaces are unchanged.",
+      },
+      { status: 403 },
     );
   try {
     const input = companySchema.parse(await req.json());
