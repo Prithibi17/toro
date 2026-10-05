@@ -16,6 +16,7 @@ type Task = {
   dueDate?: string;
   stageId: string;
   completedAt?: string;
+  assignee?: { id: string; displayName: string; status?: string } | null;
 };
 type Stage = {
   id: string;
@@ -31,18 +32,19 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [query, setQuery] = useState(""),
+    [view, setView] = useState("assigned"),
     [adding, setAdding] = useState<string | null>(null),
     [newStage, setNewStage] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch(`/api/companies/${companyId}/tasks`),
+    const r = await fetch(`/api/companies/${companyId}/tasks?view=${view}`),
       j = await r.json();
     if (r.ok) {
       setTasks(j.tasks ?? []);
       setStages(j.stages ?? []);
     } else setError(j.error);
     setLoading(false);
-  }, [companyId]);
+  }, [companyId, view]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -115,14 +117,26 @@ export function TaskBoard({ companyId }: { companyId: string }) {
             New
           </button>
         </div>
-        <div className="flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
-          <Search size={16} />
-          <input
-            className="w-full bg-transparent py-2.5 text-sm outline-none"
-            placeholder="Search To-Dos"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+        <div className="flex items-center gap-2">
+          <select
+            className="input !w-auto !py-2"
+            aria-label="To-Do view"
+            value={view}
+            onChange={(event) => setView(event.target.value)}
+          >
+            <option value="assigned">My To-Do</option>
+            <option value="created">Created by Me</option>
+            <option value="assigned-by-me">Assigned by Me</option>
+          </select>
+          <div className="flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
+            <Search size={16} />
+            <input
+              className="w-full bg-transparent py-2.5 text-sm outline-none"
+              placeholder="Search To-Dos"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
         </div>
       </header>
       {error && (
@@ -192,6 +206,25 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                           {overdue(t) ? "Overdue · " : ""}
                           {t.dueDate}
                         </p>
+                      )}
+                      {t.assignee && (
+                        <div
+                          className="mt-3 flex justify-end"
+                          title={
+                            t.assignee.status === "active"
+                              ? t.assignee.displayName
+                              : `${t.assignee.displayName} / unavailable`
+                          }
+                        >
+                          <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--soft)] text-xs font-bold">
+                            {t.assignee.displayName
+                              .split(/\s+/)
+                              .slice(0, 2)
+                              .map((part) => part[0])
+                              .join("")
+                              .toUpperCase()}
+                          </span>
+                        </div>
                       )}
                     </article>
                   ))}

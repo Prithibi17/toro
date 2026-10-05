@@ -41,6 +41,8 @@ const querySchema = z
         "city",
         "country",
         "tag",
+        "tagIds",
+        "tagMode",
         "activity",
         "rottingDays",
         "sort",
@@ -89,6 +91,15 @@ export function filterCrmRecords(
       if (query[field] && r[field] !== query[field]) return false;
     if (query.tag && !(Array.isArray(r.tags) && r.tags.includes(query.tag)))
       return false;
+    const tagIds = (query.tagIds ?? "").split(",").filter(Boolean),
+      recordTags = Array.isArray(r.tags) ? r.tags.map(String) : [];
+    if (
+      tagIds.length &&
+      (query.tagMode === "all"
+        ? !tagIds.every((id) => recordTags.includes(id))
+        : !tagIds.some((id) => recordTags.includes(id)))
+    )
+      return false;
     if (
       query.activity &&
       getActivityState({ dueAt: r.nextActivityDueAt }, now, timezone) !==
@@ -128,6 +139,7 @@ export function filterCrmRecords(
         "customerName",
         "ownerName",
         "tags",
+        "tagNames",
       ].some((f) =>
         String(r[f] ?? "")
           .toLowerCase()

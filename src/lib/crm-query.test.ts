@@ -87,4 +87,21 @@ describe("CRM record and query contracts", () => {
     expect(rows.map((r) => r.id)).toEqual(["a", "b", "c"]);
     expect(() => parseCrmQuery({ companyId: "foreign" })).toThrow();
   });
+  it("supports explicit ANY and ALL shared-tag filters", () => {
+    const rows = [
+      { id: "one", tags: ["b2b", "vip"] },
+      { id: "two", tags: ["b2b"] },
+      { id: "three", tags: ["retail"] },
+    ];
+    expect(
+      filterCrmRecords(rows, { tagIds: "b2b,vip", tagMode: "any" }, "me").map(
+        (row) => row.id,
+      ),
+    ).toEqual(["one", "two"]);
+    expect(
+      filterCrmRecords(rows, { tagIds: "b2b,vip", tagMode: "all" }, "me").map(
+        (row) => row.id,
+      ),
+    ).toEqual(["one"]);
+  });
 });

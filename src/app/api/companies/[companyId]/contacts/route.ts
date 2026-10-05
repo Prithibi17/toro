@@ -11,6 +11,7 @@ import {
   normalizeDomain,
   normalizeEmail,
   normalizePhone,
+  normalizeWebsite,
 } from "@/lib/contact-model";
 import { getAdmin } from "@/lib/firebase-admin";
 import { z } from "zod";
@@ -59,12 +60,18 @@ export async function POST(
       { status: authorizationStatus(auth.reason) },
     );
   try {
-    const input = contactInput.parse(await req.json()),
+    const raw = (await req.json()) as Record<string, unknown>,
+      allowDuplicate = raw.allowDuplicate === true;
+    delete raw.allowDuplicate;
+    if (typeof raw.website === "string")
+      raw.website = normalizeWebsite(raw.website);
+    const input = contactInput.parse(raw),
       db = getAdmin().db,
       collection = db.collection(`companies/${companyId}/contacts`),
       normalizedEmail = normalizeEmail(input.email),
       normalizedPhone = normalizePhone(input.phone || input.mobile),
-      websiteDomain = normalizeDomain(input.website);
+      websiteDomain = normalizeDomain(input.website),
+      normalizedName = input.displayName.trim().toLowerCase();
     const candidates = await Promise.all([
       normalizedEmail
         ? collection
@@ -78,22 +85,27 @@ export async function POST(
             .limit(5)
             .get()
         : null,
-      input.taxId
+      input.gstin || input.taxId
         ? collection
-            .where("normalizedTaxId", "==", input.taxId.toUpperCase())
+            .where(
+              "normalizedTaxId",
+              "==",
+              (input.gstin || input.taxId).toUpperCase(),
+            )
             .limit(5)
             .get()
         : null,
       websiteDomain
         ? collection.where("websiteDomain", "==", websiteDomain).limit(5).get()
         : null,
+      collection.where("normalizedName", "==", normalizedName).limit(5).get(),
     ]);
     const duplicates = new Map<
       string,
       FirebaseFirestore.QueryDocumentSnapshot
     >();
     candidates.forEach((s) => s?.docs.forEach((d) => duplicates.set(d.id, d)));
-    if (duplicates.size)
+    if (duplicates.size && !allowDuplicate)
       return NextResponse.json(
         {
           error: "Possible duplicate detected.",
@@ -105,7 +117,11 @@ export async function POST(
       const parent = await db
         .doc(`companies/${companyId}/contacts/${input.parentContactId}`)
         .get();
-      if (!parent.exists || parent.data()?.contactType !== "company")
+      if (
+        !parent.exists ||
+        parent.data()?.contactType !== "company" ||
+        parent.data()?.archived === true
+      )
         return NextResponse.json(
           { error: "Parent company not found" },
           { status: 400 },
@@ -125,9 +141,10 @@ export async function POST(
               ? "vendor"
               : "customer",
         normalizedEmail,
+        normalizedName,
         normalizedPhone,
         websiteDomain,
-        normalizedTaxId: input.taxId.toUpperCase(),
+        normalizedTaxId: (input.gstin || input.taxId).toUpperCase(),
         companyId,
         archived: false,
         ownerId: input.ownerId || auth.access.user.uid,
@@ -138,7 +155,12 @@ export async function POST(
       };
     delete (record as { address?: unknown }).address;
     batch.create(ref, record);
-    if (address)
+    if (
+      address &&
+      Object.entries(address).some(
+        ([key, value]) => key !== "type" && Boolean(value),
+      )
+    )
       batch.create(ref.collection("addresses").doc(), {
         ...address,
         companyId,
@@ -157,6 +179,16 @@ export async function POST(
       },
       batch,
     );
+    batch.create(db.collection(`companies/${companyId}/crmTimeline`).doc(), {
+      companyId,
+      entityType: "contact",
+      entityId: ref.id,
+      eventType: "contact_created",
+      actorId: auth.access.user.uid,
+      actorName: auth.access.user.name ?? auth.access.user.email ?? "User",
+      internal: true,
+      timestamp: FieldValue.serverTimestamp(),
+    });
     await batch.commit();
     return NextResponse.json({ id: ref.id }, { status: 201 });
   } catch (e) {

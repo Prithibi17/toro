@@ -2,6 +2,17 @@ import { z } from "zod";
 
 const text = (max = 200) => z.string().trim().max(max).default("");
 const id = z.string().trim().min(1).max(128);
+const gstin = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .refine(
+    (value) =>
+      value === "" ||
+      /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value),
+    "Enter a valid 15-character GSTIN",
+  )
+  .default("");
 export const addressInput = z.object({
   type: z
     .enum([
@@ -38,12 +49,24 @@ export const contactInput = z.object({
   alternativeEmail: z.string().email().or(z.literal("")).default(""),
   phone: text(40),
   mobile: text(40),
-  website: text(240),
+  website: z.string().trim().url().or(z.literal("")).default(""),
   industry: text(120),
   companySize: text(80),
   taxCountry: text(80),
   taxType: text(40),
   taxId: text(80),
+  gstTreatment: z
+    .enum([
+      "",
+      "registered",
+      "unregistered",
+      "consumer",
+      "overseas",
+      "special-economic-zone",
+      "deemed-export",
+    ])
+    .default(""),
+  gstin,
   registrationNumber: text(100),
   customerStatus: z
     .enum(["prospect", "active", "inactive", "former"])
@@ -56,8 +79,23 @@ export const contactInput = z.object({
   notes: text(4000),
   address: addressInput.optional(),
 });
-export const contactUpdateInput = contactInput
-  .partial()
+const updateShape = Object.fromEntries(
+  Object.entries(contactInput.shape).map(([key, schema]) => [
+    key,
+    (schema instanceof z.ZodDefault
+      ? schema.removeDefault()
+      : schema
+    ).optional(),
+  ]),
+) as {
+  [K in keyof typeof contactInput.shape]: z.ZodOptional<
+    (typeof contactInput.shape)[K] extends z.ZodDefault<infer Inner>
+      ? Inner
+      : (typeof contactInput.shape)[K]
+  >;
+};
+export const contactUpdateInput = z
+  .object(updateShape)
   .extend({ archived: z.boolean().optional() });
 export const normalizeEmail = (value: string) => value.trim().toLowerCase();
 export const normalizePhone = (value: string) =>
@@ -69,3 +107,8 @@ export const normalizeDomain = (value: string) =>
     .replace(/^https?:\/\//, "")
     .replace(/^www\./, "")
     .split(/[/?#]/)[0];
+export const normalizeWebsite = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+};

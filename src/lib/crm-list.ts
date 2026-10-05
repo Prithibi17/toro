@@ -76,6 +76,7 @@ export async function crmList(
         name: x.displayName ?? x.title ?? x.name ?? "",
         email: x.email ?? "",
         phone: x.phone ?? "",
+        contactType: x.contactType ?? "person",
       };
     });
   const members = membersSnap.docs.map((d) => ({
@@ -83,6 +84,9 @@ export async function crmList(
     displayName: d.data().displayName ?? d.data().email ?? "Member",
     email: d.data().email ?? "",
   }));
+  const tagNames = new Map(
+    tagsSnap.docs.map((doc) => [doc.id, String(doc.data().name ?? doc.id)]),
+  );
   const records = snap.docs
     .slice(0, 1000)
     .filter((d) => crmAllowed(access, "opportunities", "view", d.data()))
@@ -96,6 +100,9 @@ export async function crmList(
           contacts.find((c) => c.id === (r.customerId ?? r.contactId))?.name ??
           "",
         ownerName: members.find((m) => m.id === r.ownerId)?.displayName ?? "",
+        tagNames: Array.isArray(r.tags)
+          ? r.tags.map((id) => tagNames.get(String(id)) ?? String(id)).join(" ")
+          : "",
       };
     }) as CrmItem[];
   return {

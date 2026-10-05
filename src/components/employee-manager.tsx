@@ -1,6 +1,15 @@
 "use client";
 import { useState } from "react";
-import { CirclePlus, Mail, ShieldCheck, Users, X } from "lucide-react";
+import {
+  CirclePlus,
+  Mail,
+  MoreVertical,
+  Search,
+  ShieldCheck,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 import type { PermissionKey } from "@/lib/types";
 type Member = {
   id: string;
@@ -8,9 +17,18 @@ type Member = {
   email?: string;
   role: string;
   status: string;
+  departmentIds?: string[];
+  jobTitle?: string;
 };
 type Department = { id: string; name: string };
 type CompanyRole = { id: string; name: string; description?: string };
+type Invitation = {
+  id: string;
+  email?: string;
+  displayName?: string;
+  role?: string;
+  status: string;
+};
 const permissionOptions: {
   key: PermissionKey;
   label: string;
@@ -64,23 +82,100 @@ const crmSections = [
 ] as const;
 export function EmployeeManager({
   companyId,
+  companyName,
+  initialInvitations,
   isOwner,
   initialMembers,
   departments,
-  pending,
   roles,
 }: {
   companyId: string;
+  companyName: string;
+  initialInvitations: Invitation[];
   isOwner: boolean;
   initialMembers: Member[];
   departments: Department[];
-  pending: number;
   roles: CompanyRole[];
 }) {
-  const [members] = useState(initialMembers);
+  const [members, setMembers] = useState(initialMembers);
+  const [invitations, setInvitations] = useState(initialInvitations);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [menu, setMenu] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [removal, setRemoval] = useState<{
+    member: Member;
+    counts?: {
+      todos: number;
+      opportunities: number;
+      activities: number;
+      meetings: number;
+    };
+  } | null>(null);
+  const [mode, setMode] = useState<"leave" | "reassign">("leave"),
+    [replacement, setReplacement] = useState(""),
+    [memberSearch, setMemberSearch] = useState("");
+  async function openRemoval(member: Member) {
+    setMenu(null);
+    setBusy(true);
+    setError("");
+    const response = await fetch(
+      `/api/companies/${companyId}/members/${member.id}/removal`,
+    );
+    const result = await response.json();
+    setBusy(false);
+    if (!response.ok) {
+      setError(result.error);
+      return;
+    }
+    setRemoval({ member, counts: result.counts });
+    setMode("leave");
+    setReplacement("");
+  }
+  async function removeMember() {
+    if (!removal) return;
+    setBusy(true);
+    setError("");
+    const response = await fetch(
+      `/api/companies/${companyId}/members/${removal.member.id}/removal`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          reassignTo: mode === "reassign" ? replacement : undefined,
+        }),
+      },
+    );
+    const result = await response.json();
+    if (response.ok) {
+      setMembers((current) =>
+        current.map((member) =>
+          member.id === removal.member.id
+            ? { ...member, status: "removed" }
+            : member,
+        ),
+      );
+      setRemoval(null);
+    } else setError(result.error);
+    setBusy(false);
+  }
+  async function cancelInvitation(invitation: Invitation) {
+    setBusy(true);
+    setError("");
+    const response = await fetch(
+      `/api/companies/${companyId}/invitations/${invitation.id}`,
+      { method: "DELETE" },
+    );
+    const result = await response.json();
+    if (response.ok)
+      setInvitations((current) =>
+        current.filter((item) => item.id !== invitation.id),
+      );
+    else setError(result.error);
+    setBusy(false);
+  }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
@@ -141,6 +236,25 @@ export function EmployeeManager({
           </button>
         )}
       </div>
+      {error && !open && !removal && (
+        <p className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-500">
+          {error}
+        </p>
+      )}
+      <div className="mb-4 flex justify-end">
+        <label>
+          <span className="label">Status</span>
+          <select
+            className="input !w-auto"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="active">Active</option>
+            <option value="removed">Removed</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+      </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat
           icon={<Users />}
@@ -150,36 +264,209 @@ export function EmployeeManager({
         <Stat
           icon={<Mail />}
           label="Pending invitations"
-          value={String(pending)}
+          value={String(invitations.length)}
         />
         <Stat
           icon={<ShieldCheck />}
           label="Administrators"
           value={String(
-            members.filter((m) => ["owner", "admin"].includes(m.role)).length,
+            members.filter(
+              (m) =>
+                m.status === "active" && ["owner", "admin"].includes(m.role),
+            ).length,
           )}
         />
       </div>
+      {invitations.length > 0 && (
+        <div className="panel mt-6 overflow-hidden">
+          <div className="border-b border-[var(--border)] px-5 py-3 text-xs font-bold uppercase tracking-wider muted">
+            Pending invitations
+          </div>
+          {invitations.map((invitation) => (
+            <div
+              className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4 last:border-0"
+              key={invitation.id}
+            >
+              <div>
+                <b>{invitation.displayName ?? invitation.email}</b>
+                <p className="text-sm muted">
+                  {invitation.email} · {invitation.role}
+                </p>
+              </div>
+              <button
+                className="btn btn-secondary text-red-500"
+                disabled={busy}
+                onClick={() => void cancelInvitation(invitation)}
+              >
+                Cancel Invitation
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="panel mt-6 overflow-hidden">
-        <div className="grid grid-cols-[1.4fr_1fr_.7fr] border-b border-[var(--border)] px-5 py-3 text-xs font-bold uppercase tracking-wider muted">
+        <div className="grid grid-cols-[1.4fr_1fr_.7fr_.35fr] border-b border-[var(--border)] px-5 py-3 text-xs font-bold uppercase tracking-wider muted">
           <span>Employee</span>
           <span>Role</span>
           <span>Status</span>
+          <span className="text-right">Actions</span>
         </div>
-        {members.map((m) => (
-          <div
-            key={m.id}
-            className="grid grid-cols-[1.4fr_1fr_.7fr] items-center border-b border-[var(--border)] px-5 py-4 last:border-0"
-          >
-            <div>
-              <b>{m.displayName || m.email || "Unnamed member"}</b>
-              <p className="mt-1 text-sm muted">{m.email}</p>
+        {members
+          .filter(
+            (member) =>
+              statusFilter === "all" || member.status === statusFilter,
+          )
+          .map((m) => (
+            <div
+              key={m.id}
+              className="grid grid-cols-[1.4fr_1fr_.7fr_.35fr] items-center border-b border-[var(--border)] px-5 py-4 last:border-0"
+            >
+              <div>
+                <b>{m.displayName || m.email || "Unnamed member"}</b>
+                <p className="mt-1 text-sm muted">{m.email}</p>
+              </div>
+              <span className="capitalize">{m.role}</span>
+              <span className="capitalize text-emerald-500">{m.status}</span>
+              <div className="relative justify-self-end">
+                <button
+                  className="rounded-lg p-2 hover:bg-[var(--soft)]"
+                  aria-label={`Actions for ${m.displayName ?? m.email}`}
+                  onClick={() => setMenu(menu === m.id ? null : m.id)}
+                >
+                  <MoreVertical size={18} />
+                </button>
+                {menu === m.id && (
+                  <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl">
+                    <a
+                      className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--soft)]"
+                      href={`/workspace/${companyId}/settings/security`}
+                    >
+                      Manage permissions
+                    </a>
+                    {m.status === "active" && m.role !== "owner" && (
+                      <>
+                        <div className="my-1 border-t border-[var(--border)]" />
+                        <button
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-500 hover:bg-red-500/10"
+                          onClick={() => void openRemoval(m)}
+                        >
+                          <Trash2 size={15} />
+                          Remove from Workspace
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="capitalize">{m.role}</span>
-            <span className="capitalize text-emerald-500">{m.status}</span>
-          </div>
-        ))}
+          ))}
       </div>
+      {removal && (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
+          <section className="panel my-6 w-full max-w-xl p-6">
+            <div className="flex justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-extrabold">
+                  Remove {removal.member.displayName ?? removal.member.email}{" "}
+                  from {companyName}?
+                </h2>
+                <p className="mt-2 text-sm muted">
+                  They will lose access to this workspace and company data.
+                  Historical work, activities, CRM records, messages, and audit
+                  history will remain.
+                </p>
+              </div>
+              <button onClick={() => setRemoval(null)}>
+                <X />
+              </button>
+            </div>
+            {removal.counts && Object.values(removal.counts).some(Boolean) && (
+              <div className="mt-5 rounded-xl bg-[var(--soft)] p-4">
+                <b>Currently assigned active work</b>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                  <span>{removal.counts.todos} To-Dos</span>
+                  <span>{removal.counts.opportunities} Opportunities</span>
+                  <span>{removal.counts.activities} Activities</span>
+                  <span>{removal.counts.meetings} Meetings</span>
+                </div>
+                <label className="mt-4 flex gap-2">
+                  <input
+                    type="radio"
+                    checked={mode === "leave"}
+                    onChange={() => setMode("leave")}
+                  />
+                  Leave assignments unchanged for later reassignment
+                </label>
+                <label className="mt-2 flex gap-2">
+                  <input
+                    type="radio"
+                    checked={mode === "reassign"}
+                    onChange={() => setMode("reassign")}
+                  />
+                  Reassign supported active work
+                </label>
+                {mode === "reassign" && (
+                  <div className="mt-3">
+                    <div className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3">
+                      <Search size={15} />
+                      <input
+                        className="w-full bg-transparent py-2 outline-none"
+                        placeholder="Search active members…"
+                        value={memberSearch}
+                        onChange={(event) =>
+                          setMemberSearch(event.target.value)
+                        }
+                      />
+                    </div>
+                    <select
+                      className="input mt-2"
+                      value={replacement}
+                      onChange={(event) => setReplacement(event.target.value)}
+                    >
+                      <option value="">Choose replacement</option>
+                      {members
+                        .filter(
+                          (member) =>
+                            member.status === "active" &&
+                            member.id !== removal.member.id &&
+                            (member.displayName ?? member.email ?? "")
+                              .toLowerCase()
+                              .includes(memberSearch.toLowerCase()),
+                        )
+                        .map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.displayName ?? member.email}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+            <p className="mt-5 text-sm font-semibold text-red-500">
+              This revokes access to this workspace only. It does not delete the
+              Toro account.
+            </p>
+            {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                className="btn btn-secondary"
+                disabled={busy}
+                onClick={() => setRemoval(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn bg-red-600 text-white hover:bg-red-700"
+                disabled={busy || (mode === "reassign" && !replacement)}
+                onClick={() => void removeMember()}
+              >
+                {busy ? "Removing…" : "Remove Employee"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
           <form onSubmit={submit} className="panel my-6 w-full max-w-2xl p-6">

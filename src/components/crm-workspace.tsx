@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
-  Search,
   RefreshCw,
   Download,
   Upload,
@@ -26,6 +25,7 @@ import {
 } from "./crm-controls";
 import { getActivityState, sortCrmRecords } from "@/lib/crm-query";
 import { CrmTransfer } from "./crm-transfer";
+import { CrmEntitySearch } from "./crm-entity-search";
 type Payload = {
   records: Item[];
   stages: Item[];
@@ -367,27 +367,19 @@ export function CrmWorkspace({
             <option value="unassigned">Unassigned</option>
           </select>
         )}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            change({ q: search });
+        <CrmEntitySearch
+          companyId={companyId}
+          value={search}
+          tags={data.tags}
+          contacts={data.contacts}
+          members={data.members}
+          onValue={(value) => {
+            setSearch(value);
+            if (value.match(/(?:^|\s)@[^\s]*$/)) return;
+            if (searchTimer.current) clearTimeout(searchTimer.current);
+            searchTimer.current = setTimeout(() => change({ q: value }), 300);
           }}
-          className="flex h-10 min-w-48 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 text-sm focus-within:border-[var(--accent)]"
-        >
-          <Search size={16} />
-          <input
-            aria-label="Search opportunities"
-            className="w-full bg-transparent py-2 outline-none"
-            placeholder="Search opportunities…"
-            value={search}
-            onChange={(e) => {
-              const value = e.target.value;
-              setSearch(value);
-              if (searchTimer.current) clearTimeout(searchTimer.current);
-              searchTimer.current = setTimeout(() => change({ q: value }), 300);
-            }}
-          />
-        </form>
+        />
         {["pipeline", "reporting"].includes(screen) && (
           <button
             className="btn btn-secondary !h-10 !py-0 text-sm"
@@ -532,6 +524,41 @@ export function CrmWorkspace({
               {["overdue", "today", "future"].map((s) => (
                 <option key={s}>{s}</option>
               ))}
+            </select>
+            <select
+              aria-label="Add tag filter"
+              className="input !w-auto !py-2"
+              value=""
+              onChange={(event) => {
+                if (!event.target.value) return;
+                const ids = new Set(
+                  (params.get("tagIds") ?? "").split(",").filter(Boolean),
+                );
+                ids.add(event.target.value);
+                change({
+                  tagIds: [...ids].join(","),
+                  tagMode: params.get("tagMode") ?? "any",
+                });
+              }}
+            >
+              <option value="">Filter by tag…</option>
+              {data.tags
+                .filter((tag) => tag.active !== false)
+                .map((tag) => (
+                  <option key={tag.id} value={tag.id}>
+                    {String(tag.name ?? tag.id)}
+                  </option>
+                ))}
+            </select>
+            <select
+              aria-label="Tag matching logic"
+              className="input !w-auto !py-2"
+              disabled={!query.tagIds}
+              value={query.tagMode ?? "any"}
+              onChange={(event) => change({ tagMode: event.target.value })}
+            >
+              <option value="any">Tags: Match ANY</option>
+              <option value="all">Tags: Match ALL</option>
             </select>
             <select
               aria-label="Group by"
@@ -923,14 +950,37 @@ export function CrmWorkspace({
                         </button>
                         {Array.isArray(r.tags) && r.tags.length > 0 && (
                           <div className="mt-3 flex flex-wrap gap-1">
-                            {((r.tags as string[]) ?? []).map((t) => (
-                              <span
-                                key={t}
-                                className="rounded bg-[var(--soft)] px-2 text-xs"
-                              >
-                                {t}
+                            {((r.tags as string[]) ?? [])
+                              .slice(0, 2)
+                              .map((tagId) => (
+                                <button
+                                  type="button"
+                                  key={tagId}
+                                  className="rounded bg-[var(--soft)] px-2 text-xs"
+                                  onClick={() => {
+                                    const ids = new Set(
+                                      (params.get("tagIds") ?? "")
+                                        .split(",")
+                                        .filter(Boolean),
+                                    );
+                                    ids.add(tagId);
+                                    change({
+                                      tagIds: [...ids].join(","),
+                                      tagMode: params.get("tagMode") ?? "any",
+                                    });
+                                  }}
+                                >
+                                  {String(
+                                    data.tags.find((tag) => tag.id === tagId)
+                                      ?.name ?? tagId,
+                                  )}
+                                </button>
+                              ))}
+                            {((r.tags as string[]) ?? []).length > 2 && (
+                              <span className="rounded bg-[var(--soft)] px-2 text-xs">
+                                +{((r.tags as string[]) ?? []).length - 2}
                               </span>
-                            ))}
+                            )}
                           </div>
                         )}
                         <div className="mt-3 flex items-center justify-between gap-2">

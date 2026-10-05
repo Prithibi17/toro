@@ -13,23 +13,33 @@ export default async function Page({
   });
   if (!authz.ok) notFound();
   const db = getAdmin().db;
-  const [members, departments, invitations, roles] = await Promise.all([
-    db.collection(`companies/${companyId}/members`).get(),
-    db.collection(`companies/${companyId}/departments`).get(),
-    db
-      .collection(`companies/${companyId}/invitations`)
-      .where("status", "==", "pending")
-      .get(),
-    db
-      .collection(`companies/${companyId}/roles`)
-      .where("active", "==", true)
-      .get(),
-  ]);
+  const [members, departments, invitations, roles, company] = await Promise.all(
+    [
+      db.collection(`companies/${companyId}/members`).get(),
+      db.collection(`companies/${companyId}/departments`).get(),
+      db
+        .collection(`companies/${companyId}/invitations`)
+        .where("status", "==", "pending")
+        .get(),
+      db
+        .collection(`companies/${companyId}/roles`)
+        .where("active", "==", true)
+        .get(),
+      db.doc(`companies/${companyId}`).get(),
+    ],
+  );
   return (
     <EmployeeManager
       companyId={companyId}
+      companyName={String(company.data()?.name ?? "this workspace")}
       isOwner={authz.access.membership.role === "owner"}
-      pending={invitations.size}
+      initialInvitations={invitations.docs.map((d) => ({
+        id: d.id,
+        email: d.data().email,
+        displayName: d.data().displayName,
+        role: d.data().role,
+        status: d.data().status,
+      }))}
       roles={roles.docs.map((d) => ({
         id: d.id,
         name: String(d.data().name),
@@ -41,6 +51,8 @@ export default async function Page({
         email: d.data().email,
         role: d.data().role,
         status: d.data().status,
+        departmentIds: d.data().departmentIds ?? [],
+        jobTitle: d.data().jobTitle ?? d.data().employmentType,
       }))}
       departments={departments.docs.map((d) => ({
         id: d.id,

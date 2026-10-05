@@ -66,12 +66,25 @@ async function save(req: Request, context: Context, update: boolean) {
       access = await crmAccess(companyId),
       db = getAdmin().db;
     const { kind, id, ...data } = input.parse(await req.json());
+    const normalizedName =
+      kind === "tags" ? data.name.toLocaleLowerCase() : undefined;
     if (kind !== "favorites") demand(access, "pipelines", "manage");
     if (data.query) data.query = parseCrmQuery(data.query);
     if (update && !id) throw new CrmError("ID required");
     const collection = db.collection(
       `companies/${companyId}/${collections[kind]}`,
     );
+    if (kind === "tags" && !update) {
+      const existingTags = await collection.limit(500).get(),
+        duplicate = existingTags.docs.some(
+          (doc) =>
+            String(
+              doc.data().normalizedName ?? doc.data().name ?? "",
+            ).toLocaleLowerCase() === normalizedName,
+        );
+      if (duplicate)
+        throw new CrmError("A tag with this name already exists", 409);
+    }
     const ref = update ? collection.doc(id!) : collection.doc();
     await db.runTransaction(async (tx) => {
       const existing = await tx.get(ref);
@@ -111,6 +124,7 @@ async function save(req: Request, context: Context, update: boolean) {
       }
       const payload = {
         ...data,
+        ...(normalizedName ? { normalizedName } : {}),
         companyId,
         ...(!update
           ? {

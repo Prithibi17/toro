@@ -18,7 +18,6 @@ import {
   MessageCircle,
   Plus,
   ReceiptText,
-  Search,
   Settings,
   ShoppingCart,
   Store,
@@ -33,6 +32,7 @@ import { signOut } from "firebase/auth";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationMenu } from "./notification-menu";
+import { WorkspaceSearch } from "./workspace-search";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { auth } from "@/lib/firebase-client";
 type CompanyOption = { id: string; name: string; role: string };
@@ -272,19 +272,14 @@ export function WorkspaceShell({
           >
             <Menu size={18} />
           </button>
-          <div className="relative hidden max-w-md flex-1 sm:block">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 muted"
-              size={17}
-            />
-            <input
-              className="input !pl-10"
-              placeholder="Search this workspace…"
-            />
-          </div>
+          <WorkspaceSearch
+            companyId={companyId}
+            hasCrm={modules.includes("crm")}
+          />
           <div className="ml-auto flex gap-2">
             <ThemeToggle />
-            <NotificationMenu companyId={companyId} />
+            <NotificationMenu companyId={companyId} category="general" />
+            <NotificationMenu companyId={companyId} category="work" />
             <span className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent)] font-bold text-white">
               {companyName[0]?.toUpperCase()}
             </span>

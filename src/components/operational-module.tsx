@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CirclePlus, LoaderCircle, Search, X } from "lucide-react";
 type RecordItem = {
   id: string;
@@ -8,6 +9,7 @@ type RecordItem = {
   status: string;
   amount: number;
   date: string;
+  customerId?: string;
 };
 const config: Record<
   string,
@@ -140,6 +142,8 @@ export function OperationalModule({
   companyId: string;
   module: string;
 }) {
+  const searchParams = useSearchParams();
+  const customerId = searchParams.get("customerId");
   const c = config[module];
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,8 +174,10 @@ export function OperationalModule({
     } else setError(j.error);
   }
   if (!c) return null;
-  const visible = records.filter((r) =>
-    (r.title + r.subtitle).toLowerCase().includes(query.toLowerCase()),
+  const visible = records.filter(
+    (r) =>
+      (!customerId || r.customerId === customerId) &&
+      (r.title + r.subtitle).toLowerCase().includes(query.toLowerCase()),
   );
   return (
     <>

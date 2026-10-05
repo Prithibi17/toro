@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CalendarDays,
   ChevronLeft,
@@ -19,6 +20,7 @@ type E = {
   location?: string;
   creatorId?: string;
   relatedType?: string;
+  relatedId?: string;
 };
 type View = "week" | "day" | "month" | "list";
 const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()),
@@ -38,6 +40,8 @@ export function CalendarWorkspace({
   userId: string;
   userName: string;
 }) {
+  const searchParams = useSearchParams();
+  const relatedId = searchParams.get("relatedId");
   const [date, setDate] = useState(new Date()),
     [view, setView] = useState<View>("week"),
     [events, setEvents] = useState<E[]>([]),
@@ -75,11 +79,12 @@ export function CalendarWorkspace({
       events.filter(
         (e) =>
           (!mine || !e.creatorId || e.creatorId === userId) &&
+          (!relatedId || e.relatedId === relatedId) &&
           (activities || !e.relatedType) &&
           (!query ||
             JSON.stringify(e).toLowerCase().includes(query.toLowerCase())),
       ),
-    [events, mine, activities, query, userId],
+    [events, mine, activities, query, userId, relatedId],
   );
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

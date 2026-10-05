@@ -18,6 +18,7 @@ import {
   type Item,
 } from "./crm-controls";
 import { getActivityState, normalizePriority } from "@/lib/crm-query";
+import { TagSelector, type SharedTag } from "./tag-selector";
 type Permissions = {
   edit: boolean;
   move: boolean;
@@ -26,6 +27,7 @@ type Permissions = {
   activity: boolean;
   note: boolean;
   quotation: boolean;
+  tagManage: boolean;
 };
 export function OpportunityRecord({
   companyId,
@@ -37,6 +39,7 @@ export function OpportunityRecord({
   teams,
   contacts,
   lostReasons,
+  tags,
   events,
   activities,
   quotations,
@@ -52,6 +55,7 @@ export function OpportunityRecord({
   teams: Item[];
   contacts: Item[];
   lostReasons: Item[];
+  tags: Item[];
   events: Item[];
   activities: Item[];
   quotations: Item[];
@@ -434,15 +438,14 @@ export function OpportunityRecord({
                   </Field>
                 ),
               )}
-              <Field label="Tags (comma separated)">
-                <input
-                  className="input"
-                  value={((form.tags as string[]) ?? []).join(", ")}
-                  onChange={(e) =>
-                    setForm((f) => ({
-                      ...f,
-                      tags: e.target.value.split(",").map((v) => v.trim()),
-                    }))
+              <Field label="Tags">
+                <TagSelector
+                  companyId={companyId}
+                  tags={tags as SharedTag[]}
+                  value={(form.tags as string[]) ?? []}
+                  canCreate={permissions.tagManage}
+                  onChange={(tagIds) =>
+                    setForm((current) => ({ ...current, tags: tagIds }))
                   }
                 />
               </Field>
@@ -514,7 +517,20 @@ export function OpportunityRecord({
                 )}
               </Value>
               <Value label="Tags">
-                {((record.tags as string[]) ?? []).join(", ") || "—"}
+                <div className="flex flex-wrap gap-1">
+                  {((record.tags as string[]) ?? []).map((id) => {
+                    const tag = tags.find((item) => item.id === id);
+                    return (
+                      <span
+                        className="rounded-md bg-[var(--soft)] px-2 py-1 text-xs"
+                        key={id}
+                      >
+                        {String(tag?.name ?? id)}
+                      </span>
+                    );
+                  })}
+                  {!((record.tags as string[]) ?? []).length && "—"}
+                </div>
               </Value>
               {["source", "medium", "campaign", "city", "country"].map(
                 (key) => (

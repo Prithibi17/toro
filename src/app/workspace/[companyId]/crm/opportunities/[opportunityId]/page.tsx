@@ -31,6 +31,7 @@ export default async function Page({
     "crmSalesTeams",
     "contacts",
     "crmLostReasons",
+    "crmTags",
   ] as const;
   const [collections, events, activities, quotations, files, company] =
     await Promise.all([
@@ -89,6 +90,7 @@ export default async function Page({
       lostReasons={collections[4].docs
         .filter((d) => d.data().active !== false)
         .map(plainDoc)}
+      tags={collections[5].docs.map(plainDoc)}
       events={events.docs
         .filter((d) => d.data().entityType === "opportunity")
         .map((d) => readableHistory(access, plainDoc(d)))}
@@ -114,6 +116,7 @@ export default async function Page({
         quotation:
           access.membership.enabledModules.includes("sales") &&
           hasPermission(access.membership, "sales.manage"),
+        tagManage: crmAllowed(access, "pipelines", "manage"),
       }}
     />
   );
