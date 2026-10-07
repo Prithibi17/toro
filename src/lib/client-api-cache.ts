@@ -11,11 +11,13 @@ export async function cachedJson<T>(url: string, ttl = 30_000): Promise<T> {
     .then(async (response) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Request failed");
-      cache.set(url, { data, expires: Date.now() + ttl });
+      // A mutation may have invalidated this request while it was in flight.
+      if (cache.get(url)?.promise === promise)
+        cache.set(url, { data, expires: Date.now() + ttl });
       return data as T;
     })
     .catch((error) => {
-      cache.delete(url);
+      if (cache.get(url)?.promise === promise) cache.delete(url);
       throw error;
     });
   cache.set(url, { promise, expires: now + ttl });

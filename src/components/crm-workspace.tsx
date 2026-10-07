@@ -151,10 +151,13 @@ export function CrmWorkspace({
     setBusy(true);
     setError("");
     try {
-      const payload = await crmRequest(`${base}/opportunities?${queryString}`);
-      const extra = ["leads", "activities"].includes(screen)
-        ? ((await crmRequest(`${base}/${screen}`)).records ?? [])
-        : [];
+      const [payload, section] = await Promise.all([
+        crmRequest(`${base}/opportunities?${queryString}`),
+        ["leads", "activities"].includes(screen)
+          ? crmRequest(`${base}/${screen}`)
+          : Promise.resolve({ records: [] }),
+      ]);
+      const extra = section.records ?? [];
       if (generation !== loadGeneration.current) return;
       setData(payload);
       setSelection([]);

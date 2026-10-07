@@ -118,20 +118,37 @@ export function DiscussWorkspace({
       limit(50),
     );
     let polling: ReturnType<typeof setInterval> | undefined;
-    const loadFromServer = () =>
-      fetch(`/api/companies/${companyId}/discuss/${selected}/messages`)
+    const controller = new AbortController();
+    let snapshotVersion = 0;
+    let loading = false;
+    setMessages([]);
+    setListenerError("");
+    const loadFromServer = () => {
+      if (loading || controller.signal.aborted) return;
+      loading = true;
+      const version = snapshotVersion;
+      return fetch(`/api/companies/${companyId}/discuss/${selected}/messages`, {
+        signal: controller.signal,
+      })
         .then((response) => response.json().then((body) => ({ response, body })))
         .then(({ response, body }) => {
           if (!response.ok) throw new Error(body.error);
+          if (controller.signal.aborted || version !== snapshotVersion) return;
           setMessages(body.messages ?? []);
           setListenerError("");
         })
-        .catch(() =>
-          setListenerError("Messages could not be loaded. Please try again."),
-        );
+        .catch(() => {
+          if (!controller.signal.aborted && snapshotVersion === 0)
+            setListenerError("Messages could not be loaded. Please try again.");
+        })
+        .finally(() => { loading = false; });
+    };
+    // Start the authenticated fallback immediately, not after a failed listener.
+    void loadFromServer();
     const unsubscribe = onSnapshot(
       q,
       (s) => {
+        snapshotVersion += 1;
         setListenerError("");
         setMessages((current) =>
           s.docs
@@ -156,6 +173,7 @@ export function DiscussWorkspace({
       },
     );
     return () => {
+      controller.abort();
       unsubscribe();
       if (polling) clearInterval(polling);
     };

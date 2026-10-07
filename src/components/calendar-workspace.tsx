@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   CalendarDays,
@@ -44,6 +44,7 @@ export function CalendarWorkspace({
   userName: string;
 }) {
   const searchParams = useSearchParams();
+  const loadGeneration = useRef(0);
   const relatedId = searchParams.get("relatedId");
   const [date, setDate] = useState(new Date()),
     [view, setView] = useState<View>("week"),
@@ -60,7 +61,7 @@ export function CalendarWorkspace({
   const from =
       view === "month"
         ? new Date(date.getFullYear(), date.getMonth(), 1)
-        : week(date),
+        : view === "day" ? day(date) : week(date),
     to =
       view === "month"
         ? new Date(date.getFullYear(), date.getMonth() + 1, 7)
@@ -68,16 +69,20 @@ export function CalendarWorkspace({
   const fromIso = from.toISOString(),
     toIso = to.toISOString();
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     try {
       const j = await cachedJson<{ events: E[] }>(
         `/api/companies/${companyId}/calendar?from=${fromIso}&to=${toIso}`,
       );
+      if (generation !== loadGeneration.current) return;
       setEvents(j.events ?? []);
+      setError("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load calendar");
+      if (generation === loadGeneration.current)
+        setError(cause instanceof Error ? cause.message : "Could not load calendar");
     }
-    setLoading(false);
+    if (generation === loadGeneration.current) setLoading(false);
   }, [companyId, fromIso, toIso]);
   useEffect(() => {
     void load();

@@ -20,7 +20,6 @@ export async function crmList(
     db = getAdmin().db;
   if (!crmAllowed(access, "opportunities", "view"))
     throw new CrmError("Access denied", 403);
-  await ensureDefaultCrmStages(db, companyId, access.user.uid);
   let opportunityQuery: FirebaseFirestore.Query = db.collection(
     `companies/${companyId}/crmOpportunities`,
   );
@@ -41,7 +40,7 @@ export async function crmList(
   }
   const [
     snap,
-    stageSnap,
+    initialStageSnap,
     contactsSnap,
     membersSnap,
     teamsSnap,
@@ -66,6 +65,11 @@ export async function crmList(
       .get(),
     db.doc(`companies/${companyId}`).get(),
   ]);
+  let stageSnap = initialStageSnap;
+  if (stageSnap.empty) {
+    await ensureDefaultCrmStages(db, companyId, access.user.uid);
+    stageSnap = await db.collection(`companies/${companyId}/crmPipelineStages`).get();
+  }
   const contacts = contactsSnap.docs
     .filter((d) => crmAllowed(access, "contacts", "view", d.data()))
     .map((d) => {
