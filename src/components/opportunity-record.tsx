@@ -175,6 +175,10 @@ export function OpportunityRecord({
   const customer = contacts.find(
       (c) => c.id === (record.customerId ?? record.contactId),
     ),
+    customerAddress =
+      customer?.address && typeof customer.address === "object"
+        ? (customer.address as Record<string, unknown>)
+        : {},
     position = navigation.ids.indexOf(record.id);
   const humanChange = (key: string, value: unknown) => {
     if (value === null || value === undefined || value === "") return "—";
@@ -663,10 +667,7 @@ export function OpportunityRecord({
                             {String(
                               record[key] ||
                                 ((key === "city" || key === "country") &&
-                                customer?.address &&
-                                typeof customer.address === "object"
-                                  ? (customer.address as Record<string, unknown>)[key]
-                                  : "") ||
+                                (customerAddress[key] ?? customer?.[key])) ||
                                 "—",
                             )}
                           </Value>

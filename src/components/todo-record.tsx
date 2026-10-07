@@ -164,7 +164,7 @@ export function TodoRecord({
             className="flex items-center gap-1 text-sm text-[var(--accent)]"
           >
             <ArrowLeft size={15} />
-            My To-Do
+            To-Do
           </Link>
           <h1 className="mt-2 text-3xl font-extrabold">
             {String(record.title)}

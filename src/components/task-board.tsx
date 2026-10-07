@@ -32,7 +32,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [query, setQuery] = useState(""),
-    [view, setView] = useState("assigned"),
+    [view, setView] = useState("all"),
     [adding, setAdding] = useState<string | null>(null),
     [newStage, setNewStage] = useState(false);
   const load = useCallback(async () => {
@@ -108,7 +108,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     <>
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-extrabold">My To-Do</h1>
+          <h1 className="text-2xl font-extrabold">To-Do</h1>
           <button
             className="btn btn-primary !py-2"
             onClick={() => setAdding(stages[0]?.id ?? null)}
@@ -124,10 +124,10 @@ export function TaskBoard({ companyId }: { companyId: string }) {
             value={view}
             onChange={(event) => setView(event.target.value)}
           >
-            <option value="assigned">My To-Do</option>
+            <option value="all">All To-Dos</option>
+            <option value="assigned">Assigned to Me</option>
             <option value="created">Created by Me</option>
             <option value="assigned-by-me">Assigned by Me</option>
-            <option value="all">All To-Dos</option>
           </select>
           <div className="flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
             <Search size={16} />

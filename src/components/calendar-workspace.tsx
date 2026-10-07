@@ -11,6 +11,7 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { TagSelector, type SharedTag } from "./tag-selector";
 type E = {
   id: string;
   title: string;
@@ -21,6 +22,7 @@ type E = {
   creatorId?: string;
   relatedType?: string;
   relatedId?: string;
+  tags?: string[];
 };
 type View = "week" | "day" | "month" | "list";
 const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()),
@@ -47,6 +49,8 @@ export function CalendarWorkspace({
     [events, setEvents] = useState<E[]>([]),
     [loading, setLoading] = useState(true),
     [query, setQuery] = useState(""),
+    [tags, setTags] = useState<SharedTag[]>([]),
+    [eventTags, setEventTags] = useState<string[]>([]),
     [open, setOpen] = useState<{ start: Date; end: Date } | null>(null),
     [error, setError] = useState(""),
     [mine, setMine] = useState(true),
@@ -74,6 +78,12 @@ export function CalendarWorkspace({
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    fetch(`/api/companies/${companyId}/tags`)
+      .then((response) => (response.ok ? response.json() : { tags: [] }))
+      .then((payload) => setTags(payload.tags ?? []))
+      .catch(() => setTags([]));
+  }, [companyId]);
   const visible = useMemo(
     () =>
       events.filter(
@@ -81,10 +91,16 @@ export function CalendarWorkspace({
           (!mine || !e.creatorId || e.creatorId === userId) &&
           (!relatedId || e.relatedId === relatedId) &&
           (activities || !e.relatedType) &&
-          (!query ||
-            JSON.stringify(e).toLowerCase().includes(query.toLowerCase())),
+          (!query || (() => {
+            const tagNames = (e.tags ?? [])
+              .map((id) => tags.find((tag) => tag.id === id)?.name ?? id)
+              .join(" ");
+            return `${JSON.stringify(e)} ${tagNames}`
+              .toLowerCase()
+              .includes(query.toLowerCase());
+          })()),
       ),
-    [events, mine, activities, query, userId, relatedId],
+    [events, mine, activities, query, userId, relatedId, tags],
   );
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -93,6 +109,7 @@ export function CalendarWorkspace({
       ...Object.fromEntries(new FormData(e.currentTarget)),
       start: open.start.toISOString(),
       end: open.end.toISOString(),
+      tags: eventTags,
     };
     const r = await fetch(`/api/companies/${companyId}/calendar`, {
       method: "POST",
@@ -103,6 +120,7 @@ export function CalendarWorkspace({
       const result = await r.json();
       setEvents((current) => [result.event, ...current]);
       setOpen(null);
+      setEventTags([]);
     } else setError((await r.json()).error);
   }
   async function move(id: string, target: Date) {
@@ -137,6 +155,7 @@ export function CalendarWorkspace({
           <button
             className="btn btn-primary !py-2"
             onClick={() => {
+              setEventTags([]);
               const s = new Date(date);
               s.setHours(9, 0, 0, 0);
               setOpen({ start: s, end: new Date(s.getTime() + 3600000) });
@@ -150,7 +169,7 @@ export function CalendarWorkspace({
             <Search size={15} />
             <input
               className="w-full bg-transparent py-2 text-sm outline-none"
-              placeholder="Search events, contacts, locations"
+              placeholder="Search events, contacts, locations or tags"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -302,6 +321,15 @@ export function CalendarWorkspace({
               name="location"
               placeholder="Location"
             />
+            <div className="mt-3">
+              <TagSelector
+                companyId={companyId}
+                tags={tags}
+                value={eventTags}
+                canCreate={false}
+                onChange={(ids) => setEventTags(ids)}
+              />
+            </div>
             <button className="btn btn-primary mt-4 w-full">Create</button>
           </form>
         </div>

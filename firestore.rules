@@ -36,9 +36,14 @@ service cloud.firestore {
         && (
           !channel.data.keys().hasAny(["type"])
           || channel.data.type == "public"
-          || request.auth.uid in channel.data.memberIds
+          || (
+            channel.data.keys().hasAny(["memberIds"])
+            && request.auth.uid in channel.data.memberIds
+          )
           || (
             channel.data.type == "department"
+            && channel.data.keys().hasAny(["departmentId"])
+            && get(memberPath(companyId, request.auth.uid)).data.keys().hasAny(["departmentIds"])
             && channel.data.departmentId in get(memberPath(companyId, request.auth.uid)).data.departmentIds
           )
         );
