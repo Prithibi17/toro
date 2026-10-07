@@ -2,8 +2,10 @@
 import { Star, X } from "lucide-react";
 import { normalizePriority } from "@/lib/crm-query";
 import { useEffect, useRef } from "react";
+import { cachedJson, invalidateClientCache } from "@/lib/client-api-cache";
 export type Item = Record<string, unknown> & { id: string };
 export async function crmRequest(url: string, method = "GET", body?: unknown) {
+  if (method === "GET") return cachedJson<Record<string, unknown>>(url, 20_000);
   const response = await fetch(url, {
     method,
     ...(body
@@ -15,6 +17,9 @@ export async function crmRequest(url: string, method = "GET", body?: unknown) {
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error ?? "Request failed");
+  invalidateClientCache(
+    url.includes("/crm/") ? `${url.split("/crm/")[0]}/crm` : url,
+  );
   return data;
 }
 export function Priority({

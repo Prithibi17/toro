@@ -8,6 +8,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { WorkspaceEntityInput } from "./workspace-entity-input";
+import { cachedJson } from "@/lib/client-api-cache";
 type Item = Record<string, unknown> & { id: string };
 export function ContactsWorkspace({ companyId }: { companyId: string }) {
   const router = useRouter(),
@@ -18,12 +19,15 @@ export function ContactsWorkspace({ companyId }: { companyId: string }) {
     [error, setError] = useState("");
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch(`/api/companies/${companyId}/contacts`),
-      j = await r.json();
-    if (r.ok) {
+    try {
+      const j = await cachedJson<{ records: Item[]; canCreate: boolean }>(
+        `/api/companies/${companyId}/contacts`,
+      );
       setRecords(j.records ?? []);
       setCanCreate(j.canCreate);
-    } else setError(j.error);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load contacts");
+    }
     setLoading(false);
   }, [companyId]);
   useEffect(() => {

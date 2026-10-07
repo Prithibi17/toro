@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CirclePlus, LoaderCircle, Search, X } from "lucide-react";
+import { cachedJson, invalidateClientCache } from "@/lib/client-api-cache";
 type RecordItem = {
   id: string;
   title: string;
@@ -151,10 +152,14 @@ export function OperationalModule({
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   async function load() {
-    const r = await fetch(`/api/companies/${companyId}/records/${module}`);
-    const j = await r.json();
-    if (r.ok) setRecords(j.records);
-    else setError(j.error);
+    try {
+      const j = await cachedJson<{ records: RecordItem[] }>(
+        `/api/companies/${companyId}/records/${module}`,
+      );
+      setRecords(j.records);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load records");
+    }
     setLoading(false);
   }
   useEffect(() => {
@@ -169,6 +174,7 @@ export function OperationalModule({
     });
     const j = await r.json();
     if (r.ok) {
+      invalidateClientCache(`/api/companies/${companyId}/records/${module}`);
       setOpen(false);
       load();
     } else setError(j.error);

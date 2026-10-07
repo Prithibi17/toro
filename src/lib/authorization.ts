@@ -36,30 +36,62 @@ export type AuthorizationResult =
   | { ok: true; access: CompanyAccess }
   | { ok: false; reason: AuthorizationFailure };
 
+// Layouts and pages execute in the same React server-render request. Resolve
+// identity, membership and roles once so nested routes do not repeat the same
+// remote Firestore reads during every navigation.
+const resolveCompanyAccess = cache(
+  async (companyId: string): Promise<AuthorizationResult> => {
+    const user = await currentUser();
+    if (!user) return { ok: false, reason: "unauthenticated" };
+    const db = getAdmin().db;
+    const member = await db
+      .doc(`companies/${companyId}/members/${user.uid}`)
+      .get();
+    if (!member.exists || member.data()?.status !== "active")
+      return { ok: false, reason: "not_member" };
+    const membership = member.data() as Membership;
+    if (accessExpired(membership))
+      return { ok: false, reason: "access_expired" };
+    const roleIds = membership.roleIds ?? [];
+    const roleSnapshots = roleIds.length
+      ? await db.getAll(
+          ...roleIds.map((id) => db.doc(`companies/${companyId}/roles/${id}`)),
+        )
+      : [];
+    const roles = roleSnapshots
+      .filter((snapshot) => snapshot.exists)
+      .map(
+        (snapshot) =>
+          ({ id: snapshot.id, ...snapshot.data() }) as RoleDefinition,
+      );
+    const effective = effectivePermissions(membership, roles);
+    return {
+      ok: true,
+      access: {
+        user,
+        membership: {
+          ...membership,
+          appAccess: effective.appAccess,
+          resourcePermissions: effective.resources,
+          actionPermissions: effective.actions,
+          fieldPermissions: effective.fields,
+          permissions: effective.legacyPermissions,
+          crmTeamIds: [],
+        },
+        effectivePermissions: effective,
+      },
+    };
+  },
+);
+
 export async function authorizeCompany(
   companyId: string,
   requirements: { module?: ModuleKey; permission?: PermissionKey } = {},
 ): Promise<AuthorizationResult> {
-  const user = await currentUser();
-  if (!user) return { ok: false, reason: "unauthenticated" };
+  const resolved = await resolveCompanyAccess(companyId);
+  if (!resolved.ok) return resolved;
+  const { user, membership, effectivePermissions: effective } = resolved.access;
   const db = getAdmin().db;
-  const member = await db
-    .doc(`companies/${companyId}/members/${user.uid}`)
-    .get();
-  if (!member.exists || member.data()?.status !== "active")
-    return { ok: false, reason: "not_member" };
-  const membership = member.data() as Membership;
-  if (accessExpired(membership)) return { ok: false, reason: "access_expired" };
-  const roleIds = membership.roleIds ?? [];
-  const roleSnapshots = roleIds.length
-    ? await db.getAll(
-        ...roleIds.map((id) => db.doc(`companies/${companyId}/roles/${id}`)),
-      )
-    : [];
-  const roles = roleSnapshots
-    .filter((snap) => snap.exists)
-    .map((snap) => ({ id: snap.id, ...snap.data() }) as RoleDefinition);
-  const effective = effectivePermissions(membership, roles);
   if (
     requirements.module &&
     !(membership.enabledModules ?? []).includes(requirements.module)
@@ -77,15 +109,7 @@ export async function authorizeCompany(
   ) {
     return { ok: false, reason: "permission_denied" };
   }
-  const resolvedMembership: Membership = {
-    ...membership,
-    appAccess: effective.appAccess,
-    resourcePermissions: effective.resources,
-    actionPermissions: effective.actions,
-    fieldPermissions: effective.fields,
-    permissions: effective.legacyPermissions,
-    crmTeamIds: [],
-  };
+  const resolvedMembership: Membership = { ...membership };
   const needsCrmTeams =
     Object.entries(effective.resources).some(
       ([resource, grant]) =>
@@ -114,9 +138,8 @@ export async function authorizeCompany(
 }
 
 // Layouts and their pages share this request-scoped access check.
-export const authorizeCompanyPage = cache((companyId: string) =>
-  authorizeCompany(companyId),
-);
+export const authorizeCompanyPage = (companyId: string) =>
+  authorizeCompany(companyId);
 
 export function authorizationStatus(reason: AuthorizationFailure) {
   return reason === "unauthenticated"

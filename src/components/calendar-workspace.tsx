@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { TagSelector, type SharedTag } from "./tag-selector";
 import { WorkspaceEntityInput } from "./workspace-entity-input";
+import { cachedJson, invalidateClientCache } from "@/lib/client-api-cache";
 type E = {
   id: string;
   title: string;
@@ -67,12 +68,14 @@ export function CalendarWorkspace({
     toIso = to.toISOString();
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch(
+    try {
+      const j = await cachedJson<{ events: E[] }>(
         `/api/companies/${companyId}/calendar?from=${fromIso}&to=${toIso}`,
-      ),
-      j = await r.json();
-    if (r.ok) setEvents(j.events ?? []);
-    else setError(j.error);
+      );
+      setEvents(j.events ?? []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load calendar");
+    }
     setLoading(false);
   }, [companyId, fromIso, toIso]);
   useEffect(() => {
@@ -117,6 +120,7 @@ export function CalendarWorkspace({
       body: JSON.stringify(body),
     });
     if (r.ok) {
+      invalidateClientCache(`/api/companies/${companyId}/calendar`);
       const result = await r.json();
       setEvents((current) => [result.event, ...current]);
       setOpen(null);
@@ -145,7 +149,7 @@ export function CalendarWorkspace({
         current.map((event) => (event.id === id ? old : event)),
       );
       setError((await r.json()).error);
-    }
+    } else invalidateClientCache(`/api/companies/${companyId}/calendar`);
   }
   return (
     <div className="-m-4 sm:-m-6 lg:-m-8">

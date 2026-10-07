@@ -117,18 +117,16 @@ export async function POST(
   try {
     const data = input.parse(await req.json()),
       db = getAdmin().db,
-      stage = await db
-        .doc(`companies/${companyId}/todoStages/${data.stageId}`)
-        .get();
+      assigneeId = data.assignedToUserId ?? a.access.user.uid,
+      [stage, assignee] = await Promise.all([
+        db.doc(`companies/${companyId}/todoStages/${data.stageId}`).get(),
+        db.doc(`companies/${companyId}/members/${assigneeId}`).get(),
+      ]);
     if (!stage.exists || stage.data()?.userId !== a.access.user.uid)
       return NextResponse.json(
         { error: "Invalid personal stage" },
         { status: 400 },
       );
-    const assigneeId = data.assignedToUserId ?? a.access.user.uid,
-      assignee = await db
-        .doc(`companies/${companyId}/members/${assigneeId}`)
-        .get();
     if (
       !assignee.exists ||
       !canAssignTodoTo(a.access.user.uid, a.access.membership, {

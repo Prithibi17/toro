@@ -8,6 +8,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import { WorkspaceEntityInput } from "./workspace-entity-input";
+import { cachedJson, invalidateClientCache } from "@/lib/client-api-cache";
 type Task = {
   id: string;
   title: string;
@@ -37,12 +38,15 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     [newStage, setNewStage] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
-    const r = await fetch(`/api/companies/${companyId}/tasks?view=${view}`),
-      j = await r.json();
-    if (r.ok) {
+    try {
+      const j = await cachedJson<{ tasks: Task[]; stages: Stage[] }>(
+        `/api/companies/${companyId}/tasks?view=${view}`,
+      );
       setTasks(j.tasks ?? []);
       setStages(j.stages ?? []);
-    } else setError(j.error);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load To-Dos");
+    }
     setLoading(false);
   }, [companyId, view]);
   useEffect(() => {
@@ -67,6 +71,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
       body: JSON.stringify(body),
     });
     if (r.ok) {
+      invalidateClientCache(`/api/companies/${companyId}/tasks`);
       const result = await r.json();
       setTasks((current) => [result.task, ...current]);
       setAdding(null);
@@ -83,7 +88,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     if (!r.ok) {
       setTasks(before);
       setError((await r.json()).error);
-    }
+    } else invalidateClientCache(`/api/companies/${companyId}/tasks`);
   }
   async function addStage(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -93,6 +98,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
       body: JSON.stringify(Object.fromEntries(new FormData(e.currentTarget))),
     });
     if (r.ok) {
+      invalidateClientCache(`/api/companies/${companyId}/tasks`);
       const result = await r.json();
       setStages((current) => [...current, result.stage]);
       setNewStage(false);
