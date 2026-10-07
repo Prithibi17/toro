@@ -18,7 +18,6 @@ import {
   Pin,
   Plus,
   Reply,
-  Search,
   Send,
   Smile,
   Star,
@@ -28,6 +27,7 @@ import {
 import { clientDb, clientStorage } from "@/lib/firebase-client";
 import { CallLauncher } from "./call-launcher";
 import { ActiveMeetingCard } from "./active-meeting-card";
+import { WorkspaceEntityInput } from "./workspace-entity-input";
 type Conversation = {
   id: string;
   name: string;
@@ -114,7 +114,19 @@ export function DiscussWorkspace({
       orderBy("createdAt", "desc"),
       limit(50),
     );
-    return onSnapshot(
+    let polling: ReturnType<typeof setInterval> | undefined;
+    const loadFromServer = () =>
+      fetch(`/api/companies/${companyId}/discuss/${selected}/messages`)
+        .then((response) => response.json().then((body) => ({ response, body })))
+        .then(({ response, body }) => {
+          if (!response.ok) throw new Error(body.error);
+          setMessages(body.messages ?? []);
+          setListenerError("");
+        })
+        .catch(() =>
+          setListenerError("Messages could not be loaded. Please try again."),
+        );
+    const unsubscribe = onSnapshot(
       q,
       (s) => {
         setListenerError("");
@@ -124,14 +136,16 @@ export function DiscussWorkspace({
         setTimeout(() => bottom.current?.scrollIntoView(), 40);
       },
       (error) => {
-        setMessages([]);
-        setListenerError(
-          error.code === "permission-denied"
-            ? "Real-time messages are blocked by the currently deployed Firestore rules. Ask a Firebase project owner to publish the repository rules."
-            : "The real-time message connection could not be opened.",
-        );
+        if (error.code === "permission-denied") {
+          void loadFromServer();
+          polling = setInterval(loadFromServer, 3000);
+        } else setListenerError("The real-time message connection could not be opened.");
       },
     );
+    return () => {
+      unsubscribe();
+      if (polling) clearInterval(polling);
+    };
   }, [companyId, selected]);
   useEffect(() => {
     if (
@@ -331,18 +345,13 @@ export function DiscussWorkspace({
               <Plus size={18} />
             </button>
           </div>
-          <div className="relative mt-4">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 muted"
-            />
-            <input
-              className="input !py-2 !pl-9 text-sm"
-              placeholder="Search conversations"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <WorkspaceEntityInput
+            companyId={companyId}
+            value={search}
+            onChange={setSearch}
+            placeholder="Search conversations"
+            className="input mt-4 !py-0 text-sm"
+          />
         </div>
         <div className="flex-1 overflow-y-auto p-3">
           <Section

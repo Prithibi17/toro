@@ -6,8 +6,8 @@ import {
   ChevronDown,
   CirclePlus,
   LoaderCircle,
-  Search,
 } from "lucide-react";
+import { WorkspaceEntityInput } from "./workspace-entity-input";
 type Task = {
   id: string;
   title: string;
@@ -129,15 +129,13 @@ export function TaskBoard({ companyId }: { companyId: string }) {
             <option value="created">Created by Me</option>
             <option value="assigned-by-me">Assigned by Me</option>
           </select>
-          <div className="flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
-            <Search size={16} />
-            <input
-              className="w-full bg-transparent py-2.5 text-sm outline-none"
-              placeholder="Search To-Dos"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <WorkspaceEntityInput
+            companyId={companyId}
+            value={query}
+            onChange={setQuery}
+            placeholder="Search To-Dos"
+            className="min-w-64 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3"
+          />
         </div>
       </header>
       {error && (

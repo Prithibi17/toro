@@ -5,9 +5,9 @@ import {
   Building2,
   CirclePlus,
   LoaderCircle,
-  Search,
   UserRound,
 } from "lucide-react";
+import { WorkspaceEntityInput } from "./workspace-entity-input";
 type Item = Record<string, unknown> & { id: string };
 export function ContactsWorkspace({ companyId }: { companyId: string }) {
   const router = useRouter(),
@@ -58,15 +58,13 @@ export function ContactsWorkspace({ companyId }: { companyId: string }) {
           </button>
         )}
       </header>
-      <div className="panel mb-5 flex items-center gap-2 p-3">
-        <Search size={17} />
-        <input
-          className="w-full bg-transparent outline-none"
-          placeholder="Search name, email, phone, company or tax ID"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
+      <WorkspaceEntityInput
+        companyId={companyId}
+        value={query}
+        onChange={setQuery}
+        placeholder="Search name, email, phone, company or tax ID"
+        className="panel mb-5 p-3"
+      />
       {error && (
         <p className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-500">
           {error}

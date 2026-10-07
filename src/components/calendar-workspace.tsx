@@ -8,10 +8,10 @@ import {
   List,
   LoaderCircle,
   Plus,
-  Search,
   X,
 } from "lucide-react";
 import { TagSelector, type SharedTag } from "./tag-selector";
+import { WorkspaceEntityInput } from "./workspace-entity-input";
 type E = {
   id: string;
   title: string;
@@ -165,15 +165,13 @@ export function CalendarWorkspace({
             New
           </button>
           <b className="text-sm">Meetings</b>
-          <div className="mx-auto flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
-            <Search size={15} />
-            <input
-              className="w-full bg-transparent py-2 text-sm outline-none"
-              placeholder="Search events, contacts, locations or tags"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <WorkspaceEntityInput
+            companyId={companyId}
+            value={query}
+            onChange={setQuery}
+            placeholder="Search events, contacts, locations or tags"
+            className="mx-auto min-w-64 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3"
+          />
           <button
             className={`btn !py-2 ${view !== "list" ? "btn-primary" : "btn-secondary"}`}
             onClick={() => setView("week")}

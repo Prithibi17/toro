@@ -27,6 +27,41 @@ const input = z
       .default(null),
   })
   .refine((x) => x.content || x.attachment, "Message is empty");
+export async function GET(
+  _: Request,
+  { params }: { params: Promise<{ companyId: string; channelId: string }> },
+) {
+  const { companyId, channelId } = await params;
+  const auth = await authorizeCompany(companyId, { module: "discuss" });
+  if (!auth.ok)
+    return NextResponse.json(
+      { error: "Access denied" },
+      { status: authorizationStatus(auth.reason) },
+    );
+  const channel = await getAdmin().db
+    .doc(`companies/${companyId}/channels/${channelId}`)
+    .get();
+  if (
+    !channel.exists ||
+    !canAccessConversation(auth.access.user.uid, auth.access.membership, channel.data()!)
+  )
+    return NextResponse.json({ error: "Conversation not accessible" }, { status: 403 });
+  const messages = await channel.ref
+    .collection("messages")
+    .orderBy("createdAt", "desc")
+    .limit(50)
+    .get();
+  return NextResponse.json({
+    messages: messages.docs
+      .map((document) => ({
+        id: document.id,
+        ...document.data(),
+        createdAt: document.data().createdAt?.toDate?.()?.toISOString() ?? null,
+        updatedAt: document.data().updatedAt?.toDate?.()?.toISOString() ?? null,
+      }))
+      .reverse(),
+  });
+}
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ companyId: string; channelId: string }> },

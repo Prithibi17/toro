@@ -63,7 +63,18 @@ export default async function Page({
     ]);
   const contacts = collections[3].docs
     .filter((d) => crmAllowed(access, "contacts", "view", d.data()))
-    .map((d) => crmReadable(access, plainDoc(d), "contacts.contact"));
+    .map((d) => {
+      const contact = crmReadable(access, plainDoc(d), "contacts.contact");
+      const address =
+        contact.address && typeof contact.address === "object"
+          ? (contact.address as Record<string, unknown>)
+          : {};
+      return {
+        ...contact,
+        city: contact.city ?? address.city ?? "",
+        country: contact.country ?? address.country ?? "",
+      };
+    });
   return (
     <OpportunityRecord
       key={opportunityId}
