@@ -34,14 +34,7 @@ function getHref(note: Note, companyId: string) {
   return null;
 }
 
-export function NotificationMenu({
-  companyId,
-  category,
-}: {
-  companyId: string;
-  category: Category;
-}) {
-  const [open, setOpen] = useState(false);
+export function NotificationCenter({ companyId }: { companyId: string }) {
   const [notes, setNotes] = useState<Note[]>([]);
 
   useEffect(() => {
@@ -55,6 +48,47 @@ export function NotificationMenu({
     return () => controller.abort();
   }, [companyId]);
 
+  function markRead(id: string) {
+    setNotes((current) =>
+      current.map((note) => (note.id === id ? { ...note, read: true } : note)),
+    );
+    void fetch(`/api/companies/${companyId}/notifications`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationId: id }),
+    });
+  }
+
+  return (
+    <>
+      <NotificationMenu
+        companyId={companyId}
+        category="general"
+        notes={notes}
+        markRead={markRead}
+      />
+      <NotificationMenu
+        companyId={companyId}
+        category="work"
+        notes={notes}
+        markRead={markRead}
+      />
+    </>
+  );
+}
+
+function NotificationMenu({
+  companyId,
+  category,
+  notes,
+  markRead,
+}: {
+  companyId: string;
+  category: Category;
+  notes: Note[];
+  markRead: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
   const visible = useMemo(
     () =>
       notes.filter((note) =>
@@ -66,17 +100,6 @@ export function NotificationMenu({
   const workMenu = category === "work";
   const Icon = workMenu ? ClipboardCheck : Bell;
   const label = workMenu ? "Work notifications" : "General notifications";
-
-  function markRead(id: string) {
-    setNotes((current) =>
-      current.map((note) => (note.id === id ? { ...note, read: true } : note)),
-    );
-    void fetch(`/api/companies/${companyId}/notifications`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notificationId: id }),
-    });
-  }
 
   return (
     <div className="relative">

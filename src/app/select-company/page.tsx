@@ -19,6 +19,8 @@ export default async function SelectCompany() {
   } catch {
     setupError = true;
   }
+  if (list.length === 1)
+    redirect(`/workspace/${list[0].companyId}/dashboard`);
   return (
     <main className="min-h-screen p-5 sm:p-10">
       <InvitationSync />

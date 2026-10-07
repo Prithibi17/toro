@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Barcode,
   Boxes,
@@ -9,7 +9,6 @@ import {
   ChartNoAxesCombined,
   CheckSquare2,
   ChevronDown,
-  Check,
   Factory,
   Grid2X2,
   LayoutDashboard,
@@ -30,11 +29,10 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import { signOut } from "firebase/auth";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
-import { NotificationMenu } from "./notification-menu";
+import { NotificationCenter } from "./notification-menu";
 import { WorkspaceSearch } from "./workspace-search";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { auth } from "@/lib/firebase-client";
-type CompanyOption = { id: string; name: string; role: string };
 const glyphs: Record<ModuleKey, ComponentType<{ size?: number }>> = {
   discuss: MessageCircle,
   calendar: CalendarDays,
@@ -70,10 +68,8 @@ export function WorkspaceShell({
 }) {
   const [open, setOpen] = useState(false);
   const [companyMenu, setCompanyMenu] = useState(false);
-  const [companies, setCompanies] = useState<CompanyOption[] | null>(null);
   const companyMenuRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
-  const router = useRouter();
   const base = `/workspace/${companyId}`;
   const links = [
     {
@@ -112,15 +108,6 @@ export function WorkspaceShell({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [companyMenu]);
-  async function toggleCompanyMenu() {
-    const next = !companyMenu;
-    setCompanyMenu(next);
-    if (next && !companies) {
-      const response = await fetch("/api/companies");
-      if (response.ok) setCompanies((await response.json()).companies ?? []);
-      else setCompanies([]);
-    }
-  }
   async function logout() {
     if (auth) await signOut(auth);
     await fetch("/api/auth/session", { method: "DELETE" });
@@ -142,7 +129,7 @@ export function WorkspaceShell({
             type="button"
             aria-expanded={companyMenu}
             aria-haspopup="menu"
-            onClick={toggleCompanyMenu}
+            onClick={() => setCompanyMenu((value) => !value)}
             className="flex w-full items-center gap-3 rounded-xl bg-white/7 p-3 text-left hover:bg-white/10"
           >
             <span className="grid h-9 w-9 place-items-center rounded-lg bg-white/10">
@@ -166,42 +153,9 @@ export function WorkspaceShell({
               role="menu"
               className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-xl border border-white/10 bg-[#121b18] p-2 shadow-2xl"
             >
-              <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-[.16em] text-white/35">
-                Workspaces
+              <p className="px-2 py-2 text-xs text-white/45">
+                This is the only Toro workspace.
               </p>
-              {companies === null ? (
-                <p className="px-2 py-3 text-xs text-white/45">Loading…</p>
-              ) : (
-                companies.map((company) => (
-                  <Link
-                    role="menuitem"
-                    key={company.id}
-                    href={`/workspace/${company.id}/dashboard`}
-                    onClick={() => setCompanyMenu(false)}
-                    className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-white/70 hover:bg-white/8 hover:text-white"
-                  >
-                    <span className="grid h-7 w-7 place-items-center rounded-md bg-white/8">
-                      <Building2 size={14} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-semibold">
-                        {company.name}
-                      </span>
-                      <span className="block text-[10px] capitalize text-white/40">
-                        {company.role}
-                      </span>
-                    </span>
-                    {company.id === companyId && <Check size={14} />}
-                  </Link>
-                ))
-              )}
-              <div className="my-1 border-t border-white/10" />
-              <MenuLink
-                href="/select-company"
-                icon={<Grid2X2 size={15} />}
-                label="All workspaces"
-                close={() => setCompanyMenu(false)}
-              />
               <MenuLink
                 href="/account/settings"
                 icon={<UserRound size={15} />}
@@ -221,9 +175,6 @@ export function WorkspaceShell({
         <nav className="space-y-1">
           {links.map((l) => (
             <Link
-              prefetch={false}
-              onMouseEnter={() => router.prefetch(l.href)}
-              onFocus={() => router.prefetch(l.href)}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${path === l.href ? "bg-[var(--accent)] text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
               href={l.href}
               key={l.href}
@@ -243,9 +194,6 @@ export function WorkspaceShell({
               <Link
                 key={m.key}
                 href={`${base}/${m.key}`}
-                prefetch={false}
-                onMouseEnter={() => router.prefetch(`${base}/${m.key}`)}
-                onFocus={() => router.prefetch(`${base}/${m.key}`)}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${path === `${base}/${m.key}` ? "bg-white/8 text-white" : "text-white/55 hover:bg-white/5 hover:text-white"}`}
               >
                 <span className="grid w-5 place-items-center">
@@ -271,8 +219,7 @@ export function WorkspaceShell({
           />
           <div className="ml-auto flex gap-2">
             <ThemeToggle />
-            <NotificationMenu companyId={companyId} category="general" />
-            <NotificationMenu companyId={companyId} category="work" />
+            <NotificationCenter companyId={companyId} />
             <span className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent)] font-bold text-white">
               {companyName[0]?.toUpperCase()}
             </span>

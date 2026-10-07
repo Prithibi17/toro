@@ -1,12 +1,16 @@
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { getAdmin } from "./firebase-admin";
 import type { Membership, SessionUser } from "./types";
 import { accessExpired } from "./permission-engine";
-export async function currentUser(): Promise<SessionUser | null> {
+export const currentUser = cache(async (): Promise<SessionUser | null> => {
   try {
     const token = (await cookies()).get("toro_session")?.value;
     if (!token) return null;
-    const decoded = await getAdmin().auth.verifySessionCookie(token, true);
+    // Session cookies are signed and still fully verified locally. Avoiding the
+    // remote revocation lookup on every route makes workspace navigation fast;
+    // explicit logout continues to remove the cookie immediately.
+    const decoded = await getAdmin().auth.verifySessionCookie(token, false);
     return {
       uid: decoded.uid,
       email: decoded.email,
@@ -16,7 +20,7 @@ export async function currentUser(): Promise<SessionUser | null> {
   } catch {
     return null;
   }
-}
+});
 export async function memberships(uid: string): Promise<Membership[]> {
   const { db } = getAdmin();
   const snap = await db

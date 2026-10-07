@@ -1,1 +1,1 @@
-import{AuthForm}from"@/components/auth-form";export default function Register(){return <><h2 className="text-3xl font-extrabold tracking-tight">Build your workspace</h2><p className="mb-8 mt-2 muted">Your account can securely belong to multiple companies.</p><AuthForm mode="register"/></>}
+import{AuthForm}from"@/components/auth-form";export default function Register(){return <><h2 className="text-3xl font-extrabold tracking-tight">Create your account</h2><p className="mb-8 mt-2 muted">Use the email invited to the Toro workspace.</p><AuthForm mode="register"/></>}
