@@ -50,6 +50,8 @@ type Message = {
   parentMessageId?: string | null;
   reactions?: Record<string, string[]>;
   pinned?: boolean;
+  starred?: boolean;
+  todoCreated?: boolean;
   editedAt?: { toDate: () => Date } | null;
   deletedAt?: { toDate: () => Date } | null;
   deliveryStatus?: "sending" | "failed";
@@ -97,6 +99,7 @@ export function DiscussWorkspace({
   const [mobileChat, setMobileChat] = useState(false);
   const [details, setDetails] = useState(false);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [composerEmojis, setComposerEmojis] = useState(false);
   const nonce = useRef(crypto.randomUUID());
   const bottom = useRef<HTMLDivElement>(null);
   const active = conversations.find((c) => c.id === selected);
@@ -130,8 +133,18 @@ export function DiscussWorkspace({
       q,
       (s) => {
         setListenerError("");
-        setMessages(
-          s.docs.map((d) => ({ id: d.id, ...d.data() }) as Message).reverse(),
+        setMessages((current) =>
+          s.docs
+            .map((d) => {
+              const previous = current.find((message) => message.id === d.id);
+              return {
+                id: d.id,
+                ...d.data(),
+                starred: previous?.starred,
+                todoCreated: previous?.todoCreated,
+              } as Message;
+            })
+            .reverse(),
         );
         setTimeout(() => bottom.current?.scrollIntoView(), 40);
       },
@@ -258,6 +271,15 @@ export function DiscussWorkspace({
         ),
       );
     }
+    if (body.action === "star") {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id
+            ? { ...item, starred: Boolean(body.starred) }
+            : item,
+        ),
+      );
+    }
     if (body.action === "react" && typeof body.reaction === "string") {
       setMessages((current) =>
         current.map((item) => {
@@ -283,6 +305,12 @@ export function DiscussWorkspace({
       setMessages(before);
       const result = await response.json();
       setListenerError(result.error || "Message action failed");
+    } else if (body.action === "createTodo") {
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id ? { ...item, todoCreated: true } : item,
+        ),
+      );
     }
   }
   async function filePicked(file?: File) {
@@ -508,8 +536,8 @@ export function DiscussWorkspace({
                   />
                 </div>
               )}
-              <div className="flex items-end gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg)] p-2">
-                <label className="btn !p-2 muted">
+              <div className="relative flex min-h-14 items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg)] px-2 py-1.5">
+                <label className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-xl muted hover:bg-[var(--soft)]" title="Attach a file">
                   <Paperclip size={18} />
                   <input
                     className="hidden"
@@ -518,13 +546,26 @@ export function DiscussWorkspace({
                   />
                 </label>
                 <button
-                  className="btn !p-2 muted"
-                  onClick={() => setText((x) => x + " 🙂")}
+                  type="button"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl muted hover:bg-[var(--soft)]"
+                  title="Choose emoji"
+                  onClick={() => setComposerEmojis((open) => !open)}
                 >
                   <Smile size={18} />
                 </button>
+                {composerEmojis && (
+                  <EmojiPicker
+                    className="bottom-16 left-2"
+                    onChoose={(emoji) => {
+                      setText((current) => current + emoji);
+                      setComposerEmojis(false);
+                    }}
+                    close={() => setComposerEmojis(false)}
+                  />
+                )}
                 <textarea
-                  className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 outline-none"
+                  rows={1}
+                  className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2.5 leading-5 outline-none"
                   placeholder={`Message ${conversationName(active, members, userId)}`}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
@@ -537,7 +578,8 @@ export function DiscussWorkspace({
                 />
                 <button
                   disabled={sending || (!text.trim() && !upload)}
-                  className="btn btn-primary !p-2.5"
+                  title="Send message"
+                  className="btn btn-primary h-10 w-10 shrink-0 !p-0"
                   onClick={send}
                 >
                   {sending ? (
@@ -719,6 +761,7 @@ function MessageBubble({
   onAction: (body: Record<string, unknown>) => void;
   highlighted: boolean;
 }) {
+  const [reactionPicker, setReactionPicker] = useState(false);
   return (
     <div
       id={`message-${m.id}`}
@@ -772,7 +815,7 @@ function MessageBubble({
           </a>
         )}
         {!m.deletedAt && (
-          <div className="mt-1 flex flex-wrap items-center gap-1 opacity-70 hover:opacity-100">
+          <div className="relative mt-1 flex flex-wrap items-center gap-1 opacity-70 hover:opacity-100">
             <button
               className="rounded p-1 hover:bg-[var(--soft)]"
               title="Reply"
@@ -783,31 +826,44 @@ function MessageBubble({
             <button
               className="rounded p-1 hover:bg-[var(--soft)]"
               title="React"
-              onClick={() => onAction({ action: "react", reaction: "👍" })}
+              onClick={() => setReactionPicker((open) => !open)}
             >
               <Smile size={14} />
             </button>
             <button
               className="rounded p-1 hover:bg-[var(--soft)]"
               title="Star for later"
-              onClick={() => onAction({ action: "star", starred: true })}
+              aria-pressed={Boolean(m.starred)}
+              onClick={() => onAction({ action: "star", starred: !m.starred })}
             >
-              <Star size={14} />
+              <Star size={14} fill={m.starred ? "currentColor" : "none"} />
             </button>
             <button
               className="rounded p-1 hover:bg-[var(--soft)]"
               title="Pin"
+              aria-pressed={Boolean(m.pinned)}
               onClick={() => onAction({ action: "pin", pinned: !m.pinned })}
             >
-              <Pin size={14} />
+              <Pin size={14} fill={m.pinned ? "currentColor" : "none"} />
             </button>
             <button
               className="rounded p-1 hover:bg-[var(--soft)]"
               title="Create To-Do"
+              disabled={m.todoCreated}
               onClick={() => onAction({ action: "createTodo" })}
             >
-              <CheckSquare2 size={14} />
+              <CheckSquare2 size={14} className={m.todoCreated ? "text-emerald-600" : ""} />
             </button>
+            {reactionPicker && (
+              <EmojiPicker
+                className="left-7 top-7"
+                onChoose={(emoji) => {
+                  onAction({ action: "react", reaction: emoji });
+                  setReactionPicker(false);
+                }}
+                close={() => setReactionPicker(false)}
+              />
+            )}
             {Object.entries(m.reactions || {}).map(([reaction, users]) =>
               users.length ? (
                 <span
@@ -827,6 +883,46 @@ function MessageBubble({
             {m.deliveryStatus === "failed" ? "Could not send" : "Sending…"}
           </small>
         )}
+      </div>
+    </div>
+  );
+}
+
+const EMOJI_GROUPS = [
+  ["Smileys", "😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 🤥 😶 😐 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕"],
+  ["Gestures", "👍 👎 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ ✋ 🤚 🖐️ 🖖 👋 🤝 👏 🙌 👐 🤲 🙏 ✍️ 💪 🦾 🫶 🫰"],
+  ["People", "👶 🧒 👦 👧 🧑 👱 👨 🧔 👩 🧓 👴 👵 🙍 🙎 🙅 🙆 💁 🙋 🧏 🙇 🤦 🤷 👮 👷 💂 🕵️ 👩‍⚕️ 👨‍🎓 👩‍🏫 👨‍💻 👩‍💼 👨‍🔧 👩‍🔬 👨‍🎨 👩‍🚒 👨‍✈️ 👩‍🚀"],
+  ["Objects", "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 ⭐ 🌟 ✨ ⚡ 🔥 💥 🎉 🎊 ✅ ❌ ❓ ❗ 💡 📌 📍 📎 📝 📅 📞 💬 📢 🔔 🎯 🏆 🎁 🚀"],
+  ["Nature", "🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐔 🐧 🐦 🦄 🐝 🦋 🌸 🌹 🌻 🌞 🌈 ☀️ 🌙 ⛄ 🌊"],
+  ["Food", "🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🥑 🍕 🍔 🍟 🌭 🍿 🍩 🍪 🎂 🍰 ☕ 🍵 🥤 🍺 🥂"],
+] as const;
+
+function EmojiPicker({
+  onChoose,
+  close,
+  className,
+}: {
+  onChoose: (emoji: string) => void;
+  close: () => void;
+  className: string;
+}) {
+  return (
+    <div className={`absolute z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-3 shadow-2xl ${className}`}>
+      <div className="mb-2 flex items-center justify-between">
+        <b className="text-sm">Choose an emoji</b>
+        <button type="button" onClick={close} className="rounded p-1 hover:bg-[var(--soft)]"><X size={15} /></button>
+      </div>
+      <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+        {EMOJI_GROUPS.map(([label, emojiLine]) => (
+          <section key={label}>
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wider muted">{label}</p>
+            <div className="grid grid-cols-8 gap-1">
+              {emojiLine.split(" ").map((emoji, index) => (
+                <button type="button" title={emoji} key={`${label}-${index}`} onClick={() => onChoose(emoji)} className="grid h-8 w-8 place-items-center rounded text-lg hover:bg-[var(--soft)]">{emoji}</button>
+              ))}
+            </div>
+          </section>
+        ))}
       </div>
     </div>
   );

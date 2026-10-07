@@ -51,6 +51,16 @@ export async function GET(
     .orderBy("createdAt", "desc")
     .limit(50)
     .get();
+  const stars = messages.empty
+    ? []
+    : await getAdmin().db.getAll(
+        ...messages.docs.map((document) =>
+          document.ref.collection("stars").doc(auth.access.user.uid),
+        ),
+      );
+  const starred = new Set(
+    stars.filter((document) => document.exists).map((document) => document.ref.parent.parent?.id),
+  );
   return NextResponse.json({
     messages: messages.docs
       .map((document) => ({
@@ -58,6 +68,7 @@ export async function GET(
         ...document.data(),
         createdAt: document.data().createdAt?.toDate?.()?.toISOString() ?? null,
         updatedAt: document.data().updatedAt?.toDate?.()?.toISOString() ?? null,
+        starred: starred.has(document.id),
       }))
       .reverse(),
   });
