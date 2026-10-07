@@ -26,6 +26,10 @@ import {
 import { getActivityState, sortCrmRecords } from "@/lib/crm-query";
 import { CrmTransfer } from "./crm-transfer";
 import { CrmEntitySearch } from "./crm-entity-search";
+import {
+  autofillOpportunityFromContact,
+  blankOpportunityDraft,
+} from "@/lib/crm-opportunity-autofill";
 type Payload = {
   records: Item[];
   stages: Item[];
@@ -90,7 +94,10 @@ export function CrmWorkspace({
     [search, setSearch] = useState(params.get("q") ?? ""),
     [config, setConfig] = useState<Item | null>(null),
     [kind, setKind] = useState("stages"),
-    [priority, setPriority] = useState(0);
+    [priority, setPriority] = useState(0),
+    [opportunityDraft, setOpportunityDraft] = useState(() =>
+      blankOpportunityDraft(),
+    );
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
   const base = `/api/companies/${companyId}/crm`;
@@ -296,6 +303,7 @@ export function CrmWorkspace({
         currency,
       });
       setStage(null);
+      setOpportunityDraft(blankOpportunityDraft(data.userId));
       if (more) open(result.record);
       else await load();
     });
@@ -334,6 +342,7 @@ export function CrmWorkspace({
             className="btn btn-primary !h-10 !px-4 !py-0 text-sm"
             onClick={() => {
               setPriority(0);
+              setOpportunityDraft(blankOpportunityDraft(data.userId));
               setStage(
                 data.stages.find((s) => s.stageType === "OPEN")?.id ?? "",
               );
@@ -1188,14 +1197,39 @@ export function CrmWorkspace({
         <Modal title="New opportunity" close={() => setStage(null)}>
           <form onSubmit={create} className="grid gap-4 sm:grid-cols-2">
             <Field label="Opportunity">
-              <input className="input" name="name" required minLength={2} />
+              <input
+                className="input"
+                name="name"
+                required
+                minLength={2}
+                placeholder="Example: 5 office chairs"
+                value={opportunityDraft.name}
+                onChange={(event) =>
+                  setOpportunityDraft((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+              />
             </Field>
             <Field label="Contact / customer">
-              <select className="input" name="customerId">
+              <select
+                className="input"
+                name="customerId"
+                value={opportunityDraft.customerId}
+                onChange={(event) => {
+                  const contact = data.contacts.find(
+                    (item) => item.id === event.target.value,
+                  );
+                  setOpportunityDraft((current) =>
+                    autofillOpportunityFromContact(current, contact),
+                  );
+                }}
+              >
                 <option value="">No contact</option>
                 {data.contacts.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {title(c)}
+                    {title(c)} · {c.contactType === "company" ? "Company" : "Person"}
                   </option>
                 ))}
               </select>
@@ -1204,7 +1238,13 @@ export function CrmWorkspace({
               <select
                 className="input"
                 name="ownerId"
-                defaultValue={data.userId}
+                value={opportunityDraft.ownerId}
+                onChange={(event) =>
+                  setOpportunityDraft((current) => ({
+                    ...current,
+                    ownerId: event.target.value,
+                  }))
+                }
                 disabled={!data.canAssign}
               >
                 <option value="">Unassigned</option>
@@ -1215,7 +1255,11 @@ export function CrmWorkspace({
                 ))}
               </select>
               {!data.canAssign && (
-                <input type="hidden" name="ownerId" value={data.userId} />
+                <input
+                  type="hidden"
+                  name="ownerId"
+                  value={opportunityDraft.ownerId || data.userId}
+                />
               )}
             </Field>
             <Field label="Expected revenue">
@@ -1225,7 +1269,13 @@ export function CrmWorkspace({
                 min="0"
                 step=".01"
                 name="value"
-                defaultValue="0"
+                value={opportunityDraft.value}
+                onChange={(event) =>
+                  setOpportunityDraft((current) => ({
+                    ...current,
+                    value: event.target.value,
+                  }))
+                }
               />
             </Field>
             {["email", "phone"].map((f) => (
@@ -1234,7 +1284,19 @@ export function CrmWorkspace({
                   className="input"
                   name={f}
                   type={f === "email" ? "email" : "text"}
+                  value={opportunityDraft[f as "email" | "phone"]}
+                  onChange={(event) =>
+                    setOpportunityDraft((current) => ({
+                      ...current,
+                      [f]: event.target.value,
+                    }))
+                  }
                 />
+                {opportunityDraft.customerId && (
+                  <span className="mt-1 block text-xs text-emerald-600">
+                    Filled from the selected contact
+                  </span>
+                )}
               </Field>
             ))}
             <Field label="Priority">

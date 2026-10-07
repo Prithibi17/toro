@@ -76,6 +76,7 @@ export async function crmList(
         name: x.displayName ?? x.title ?? x.name ?? "",
         email: x.email ?? "",
         phone: x.phone ?? "",
+        mobile: x.mobile ?? "",
         contactType: x.contactType ?? "person",
       };
     });
