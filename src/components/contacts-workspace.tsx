@@ -87,6 +87,12 @@ export function ContactsWorkspace({ companyId }: { companyId: string }) {
               onClick={() =>
                 router.push(`/workspace/${companyId}/contacts/${r.id}`)
               }
+              onPointerEnter={() =>
+                router.prefetch(`/workspace/${companyId}/contacts/${r.id}`)
+              }
+              onFocus={() =>
+                router.prefetch(`/workspace/${companyId}/contacts/${r.id}`)
+              }
             >
               <div className="flex gap-3">
                 <span className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--soft)]">

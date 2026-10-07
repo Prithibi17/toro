@@ -944,6 +944,16 @@ export function CrmWorkspace({
                         <button
                           className="w-full text-left"
                           onClick={() => open(r)}
+                          onPointerEnter={() =>
+                            router.prefetch(
+                              `/workspace/${companyId}/crm/opportunities/${r.id}`,
+                            )
+                          }
+                          onFocus={() =>
+                            router.prefetch(
+                              `/workspace/${companyId}/crm/opportunities/${r.id}`,
+                            )
+                          }
                         >
                           <span className="line-clamp-2 text-sm font-semibold leading-5">
                             {String(r.name)}

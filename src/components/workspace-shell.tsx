@@ -108,6 +108,15 @@ export function WorkspaceShell({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [companyMenu]);
+  useEffect(() => {
+    const closeDetails = (event: PointerEvent) => {
+      document.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
+        if (!details.contains(event.target as Node)) details.open = false;
+      });
+    };
+    document.addEventListener("pointerdown", closeDetails);
+    return () => document.removeEventListener("pointerdown", closeDetails);
+  }, []);
   async function logout() {
     if (auth) await signOut(auth);
     await fetch("/api/auth/session", { method: "DELETE" });

@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Hash, Search, UserRound } from "lucide-react";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 
 type Entity = {
   id: string;
@@ -26,9 +27,15 @@ export function WorkspaceEntityInput({
   const router = useRouter();
   const [groups, setGroups] = useState<Record<string, Entity[]>>({});
   const [active, setActive] = useState(0);
+  const container = useRef<HTMLDivElement>(null);
   const match = value.match(/(?:^|\s)@([^\s]*)$/);
   const term = match?.[1] ?? "";
   const open = Boolean(match);
+  const dismiss = useCallback(
+    () => onChange(value.replace(/(?:^|\s)@[^\s]*$/, "").trim()),
+    [onChange, value],
+  );
+  useOutsideDismiss(container, open, dismiss);
   useEffect(() => {
     if (!open) {
       setGroups({});
@@ -66,7 +73,7 @@ export function WorkspaceEntityInput({
     else router.push(`/workspace/${companyId}/contacts/${entity.id}`);
   }
   return (
-    <div className={`relative flex items-center gap-2 ${className}`}>
+    <div ref={container} className={`relative flex items-center gap-2 ${className}`}>
       <Search size={16} />
       <input
         className="w-full bg-transparent py-2.5 text-sm outline-none"

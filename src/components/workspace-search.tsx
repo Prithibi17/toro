@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Hash, Search, UserRound } from "lucide-react";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 type Entity = {
   id: string;
   name: string;
@@ -28,6 +29,12 @@ export function WorkspaceSearch({
     at = value.match(/(?:^|\s)@([^\s]*)$/),
     term = at?.[1] ?? "",
     open = hasCrm && Boolean(at);
+  const container = useRef<HTMLDivElement>(null);
+  const dismiss = useCallback(
+    () => setValue((current) => current.replace(/(?:^|\s)@[^\s]*$/, "").trim()),
+    [],
+  );
+  useOutsideDismiss(container, open, dismiss);
   useEffect(() => {
     if (!open) {
       setGroups({});
@@ -81,7 +88,7 @@ export function WorkspaceSearch({
       );
   }
   return (
-    <div className="relative hidden max-w-xl flex-1 sm:block">
+    <div ref={container} className="relative hidden max-w-xl flex-1 sm:block">
       <Search
         className="absolute left-3 top-1/2 -translate-y-1/2 muted"
         size={17}

@@ -53,6 +53,7 @@ export function CalendarWorkspace({
     [tags, setTags] = useState<SharedTag[]>([]),
     [eventTags, setEventTags] = useState<string[]>([]),
     [open, setOpen] = useState<{ start: Date; end: Date } | null>(null),
+    [selectedEvent, setSelectedEvent] = useState<E | null>(null),
     [error, setError] = useState(""),
     [mine, setMine] = useState(true),
     [activities, setActivities] = useState(true);
@@ -151,6 +152,38 @@ export function CalendarWorkspace({
       setError((await r.json()).error);
     } else invalidateClientCache(`/api/companies/${companyId}/calendar`);
   }
+  async function editEvent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedEvent) return;
+    const values = Object.fromEntries(new FormData(event.currentTarget));
+    const update = {
+      title: String(values.title),
+      location: String(values.location ?? ""),
+      description: String(values.description ?? ""),
+      tags: eventTags,
+    };
+    setEvents((current) =>
+      current.map((item) =>
+        item.id === selectedEvent.id ? { ...item, ...update } : item,
+      ),
+    );
+    const response = await fetch(
+      `/api/companies/${companyId}/calendar/${selectedEvent.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(update),
+      },
+    );
+    if (response.ok) {
+      invalidateClientCache(`/api/companies/${companyId}/calendar`);
+      setSelectedEvent(null);
+      setEventTags([]);
+    } else {
+      setError((await response.json()).error ?? "Could not update event");
+      await load();
+    }
+  }
   return (
     <div className="-m-4 sm:-m-6 lg:-m-8">
       <div className="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]">
@@ -245,13 +278,23 @@ export function CalendarWorkspace({
             <Month
               date={date}
               events={visible}
+              edit={(event) => {
+                setSelectedEvent(event);
+                setEventTags(event.tags ?? []);
+              }}
               select={(d) => {
                 setDate(d);
                 setView("day");
               }}
             />
           ) : view === "list" ? (
-            <Agenda events={visible} />
+            <Agenda
+              events={visible}
+              edit={(event) => {
+                setSelectedEvent(event);
+                setEventTags(event.tags ?? []);
+              }}
+            />
           ) : (
             <Grid
               date={date}
@@ -259,6 +302,10 @@ export function CalendarWorkspace({
               events={visible}
               create={setOpen}
               move={move}
+              edit={(event) => {
+                setSelectedEvent(event);
+                setEventTags(event.tags ?? []);
+              }}
             />
           )}
         </main>
@@ -336,6 +383,49 @@ export function CalendarWorkspace({
           </form>
         </div>
       )}
+      {selectedEvent && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <form className="panel w-full max-w-md p-5" onSubmit={editEvent}>
+            <div className="flex items-center justify-between">
+              <div>
+                <b>Edit event</b>
+                <p className="mt-1 text-xs muted">
+                  {new Date(selectedEvent.start).toLocaleString()}
+                </p>
+              </div>
+              <button type="button" onClick={() => setSelectedEvent(null)}>
+                <X />
+              </button>
+            </div>
+            <label className="mt-4 block">
+              <span className="label">Title</span>
+              <input className="input" name="title" required defaultValue={selectedEvent.title} />
+            </label>
+            <label className="mt-3 block">
+              <span className="label">Location</span>
+              <input className="input" name="location" defaultValue={selectedEvent.location} />
+            </label>
+            <label className="mt-3 block">
+              <span className="label">Description</span>
+              <textarea className="input min-h-24" name="description" defaultValue={String((selectedEvent as E & { description?: string }).description ?? "")} />
+            </label>
+            <div className="mt-3">
+              <span className="label">Tags</span>
+              <TagSelector
+                companyId={companyId}
+                tags={tags}
+                value={eventTags}
+                canCreate={false}
+                onChange={(ids) => setEventTags(ids)}
+              />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="btn btn-secondary" onClick={() => setSelectedEvent(null)}>Cancel</button>
+              <button className="btn btn-primary">Save changes</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
@@ -345,12 +435,14 @@ function Grid({
   events,
   create,
   move,
+  edit,
 }: {
   date: Date;
   one: boolean;
   events: E[];
   create: (v: { start: Date; end: Date }) => void;
   move: (id: string, d: Date) => void;
+  edit: (event: E) => void;
 }) {
   const start = one ? day(date) : week(date),
     days = Array.from({ length: one ? 1 : 7 }, (_, i) => add(start, i)),
@@ -388,7 +480,7 @@ function Grid({
             {events
               .filter((e) => e.allDay && key(new Date(e.start)) === key(d))
               .map((e) => (
-                <Event key={e.id} e={e} />
+                <Event key={e.id} e={e} edit={edit} />
               ))}
           </div>
         ))}
@@ -428,7 +520,7 @@ function Grid({
                         new Date(e.start).getHours() === h,
                     )
                     .map((e) => (
-                      <Event key={e.id} e={e} />
+                      <Event key={e.id} e={e} edit={edit} />
                     ))}
                 </div>
               );
@@ -439,7 +531,7 @@ function Grid({
     </div>
   );
 }
-function Event({ e }: { e: E }) {
+function Event({ e, edit }: { e: E; edit: (event: E) => void }) {
   const mins = Math.max(
     30,
     (new Date(e.end).getTime() - new Date(e.start).getTime()) / 60000,
@@ -447,6 +539,13 @@ function Event({ e }: { e: E }) {
   return (
     <div
       draggable
+      role="button"
+      tabIndex={0}
+      title="Open and edit event"
+      onClick={() => edit(e)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") edit(e);
+      }}
       onDragStart={(x) => x.dataTransfer.setData("text/plain", e.id)}
       className="mb-1 overflow-hidden rounded-md border-l-2 border-orange-500 bg-orange-500/15 px-2 py-1 text-xs"
       style={{ minHeight: Math.min(120, Math.max(26, mins)) }}
@@ -466,10 +565,12 @@ function Month({
   date,
   events,
   select,
+  edit,
 }: {
   date: Date;
   events: E[];
   select: (d: Date) => void;
+  edit: (event: E) => void;
 }) {
   const first = week(new Date(date.getFullYear(), date.getMonth(), 1));
   return (
@@ -477,30 +578,36 @@ function Month({
       {Array.from({ length: 42 }, (_, i) => add(first, i)).map((d) => {
         const es = events.filter((e) => key(new Date(e.start)) === key(d));
         return (
-          <button
+          <div
             key={key(d)}
-            onClick={() => select(d)}
             className="min-h-28 border-b border-r border-[var(--border)] p-2 text-left"
           >
-            <b>{d.getDate()}</b>
+            <button type="button" className="font-bold" onClick={() => select(d)}>
+              {d.getDate()}
+            </button>
             {es.slice(0, 3).map((e) => (
-              <p
+              <button
+                type="button"
                 key={e.id}
                 className="mt-1 truncate bg-orange-500/15 px-1 text-xs"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  edit(e);
+                }}
               >
                 {e.title}
-              </p>
+              </button>
             ))}
             {es.length > 3 && (
               <p className="text-xs muted">+{es.length - 3} more</p>
             )}
-          </button>
+          </div>
         );
       })}
     </div>
   );
 }
-function Agenda({ events }: { events: E[] }) {
+function Agenda({ events, edit }: { events: E[]; edit: (event: E) => void }) {
   return (
     <>
       {[...events]
@@ -509,6 +616,12 @@ function Agenda({ events }: { events: E[] }) {
           <div
             key={e.id}
             className="grid grid-cols-[150px_1fr] border-b border-[var(--border)] p-4"
+            role="button"
+            tabIndex={0}
+            onClick={() => edit(e)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") edit(e);
+            }}
           >
             <span className="text-sm muted">
               {new Date(e.start).toLocaleString()}

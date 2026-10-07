@@ -313,6 +313,18 @@ export function OpportunityRecord({
                 </button>
               </>
             )}
+            {permissions.edit && (
+              <button
+                disabled={busy || editing}
+                className="btn btn-secondary !py-2"
+                onClick={() => {
+                  setForm(record);
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </button>
+            )}
             <details className="relative">
               <summary className="btn btn-secondary cursor-pointer list-none !py-2">
                 <MoreHorizontal size={16} /> Actions

@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Building2, Hash, Search, UserRound, X } from "lucide-react";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 type Entity = {
   id: string;
   name: string;
@@ -34,9 +35,15 @@ export function CrmEntitySearch({
     params = useSearchParams(),
     [groups, setGroups] = useState<Record<string, Entity[]>>({}),
     [active, setActive] = useState(0);
+  const container = useRef<HTMLDivElement>(null);
   const at = value.match(/(?:^|\s)@([^\s]*)$/),
     term = at?.[1] ?? "",
     open = Boolean(at);
+  const dismiss = useCallback(
+    () => onValue(value.replace(/(?:^|\s)@[^\s]*$/, "").trim()),
+    [onValue, value],
+  );
+  useOutsideDismiss(container, open, dismiss);
   useEffect(() => {
     if (!open) {
       setGroups({});
@@ -139,7 +146,7 @@ export function CrmEntitySearch({
       });
   }
   return (
-    <div className="relative flex h-10 min-w-48 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 text-sm focus-within:border-[var(--accent)]">
+    <div ref={container} className="relative flex h-10 min-w-48 flex-1 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--panel)] px-3 text-sm focus-within:border-[var(--accent)]">
       <Search size={16} />
       <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
         {chips.map((chip) => (

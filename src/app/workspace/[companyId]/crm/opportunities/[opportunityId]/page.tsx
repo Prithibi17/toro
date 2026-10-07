@@ -43,21 +43,25 @@ export default async function Page({
       db
         .collection(`companies/${companyId}/crmTimeline`)
         .where("entityId", "==", opportunityId)
+        .limit(150)
         .get(),
       db
         .collection(`companies/${companyId}/crmActivities`)
         .where("relatedId", "==", opportunityId)
+        .limit(100)
         .get(),
       access.membership.enabledModules.includes("sales") &&
       hasPermission(access.membership, "sales.manage")
         ? db
             .collection(`companies/${companyId}/salesOrders`)
             .where("opportunityId", "==", opportunityId)
+            .limit(100)
             .get()
         : null,
       db
         .collection(`companies/${companyId}/files`)
         .where("opportunityId", "==", opportunityId)
+        .limit(100)
         .get(),
       db.doc(`companies/${companyId}`).get(),
     ]);

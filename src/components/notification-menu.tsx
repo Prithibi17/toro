@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, ClipboardCheck } from "lucide-react";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 
 type Category = "general" | "work";
 type Note = {
@@ -89,6 +90,9 @@ function NotificationMenu({
   markRead: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const dismiss = useCallback(() => setOpen(false), []);
+  useOutsideDismiss(container, open, dismiss);
   const visible = useMemo(
     () =>
       notes.filter((note) =>
@@ -102,7 +106,7 @@ function NotificationMenu({
   const label = workMenu ? "Work notifications" : "General notifications";
 
   return (
-    <div className="relative">
+    <div ref={container} className="relative">
       <button
         className="btn btn-secondary relative !p-2.5"
         aria-label={label}
@@ -158,7 +162,7 @@ function NotificationMenu({
                   className="block border-b border-[var(--border)] p-4 last:border-0 hover:bg-[var(--soft)]"
                   key={note.id}
                   href={href}
-                  onClick={() => markRead(note.id)}
+                  onClick={() => { markRead(note.id); setOpen(false); }}
                 >
                   {content}
                 </Link>
