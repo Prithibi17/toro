@@ -13,6 +13,9 @@ import {
 } from "./crm-server";
 import type { CompanyAccess } from "./authorization";
 import { opportunityStatus, type StageType } from "./crm-workflow";
+import { getStorage } from "firebase-admin/storage";
+import { getApps } from "firebase-admin/app";
+import { appendAudit } from "./audit";
 export async function createOpportunity(
   companyId: string,
   access: CompanyAccess,
@@ -194,4 +197,55 @@ export async function updateOpportunity(
       );
   });
   return crmReadable(access, plainDoc(await ref.get()));
+}
+
+export async function deleteOpportunity(
+  companyId: string,
+  recordId: string,
+  access: CompanyAccess,
+) {
+  const db = getAdmin().db;
+  const ref = db.doc(`companies/${companyId}/crmOpportunities/${recordId}`);
+  const record = await ref.get();
+  if (!record.exists) throw new CrmError("Opportunity not found", 404);
+  demand(access, "opportunities", "view", record.data());
+  demand(access, "opportunities", "delete", record.data());
+  const [timeline, activities, files] = await Promise.all([
+    db.collection(`companies/${companyId}/crmTimeline`).where("entityId", "==", recordId).limit(200).get(),
+    db.collection(`companies/${companyId}/crmActivities`).where("relatedId", "==", recordId).limit(150).get(),
+    db.collection(`companies/${companyId}/files`).where("opportunityId", "==", recordId).limit(100).get(),
+  ]);
+  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  if (bucketName && getApps()[0]) {
+    const bucket = getStorage(getApps()[0]).bucket(bucketName);
+    await Promise.all(
+      files.docs.map(async (document) => {
+        const path = document.data().path;
+        if (
+          typeof path === "string" &&
+          path.startsWith(`companies/${companyId}/files/crm/${recordId}/`)
+        )
+          await bucket.file(path).delete({ ignoreNotFound: true });
+      }),
+    );
+  }
+  const batch = db.batch();
+  timeline.docs.forEach((document) => batch.delete(document.ref));
+  activities.docs
+    .filter((document) => document.data().relatedType === "opportunity")
+    .forEach((document) => batch.delete(document.ref));
+  files.docs.forEach((document) => batch.delete(document.ref));
+  batch.delete(ref);
+  appendAudit(
+    db,
+    companyId,
+    {
+      actorId: access.user.uid,
+      action: "crm.opportunity_deleted",
+      entityType: "opportunity",
+      entityId: recordId,
+    },
+    batch,
+  );
+  await batch.commit();
 }

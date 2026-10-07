@@ -34,33 +34,19 @@ export function isCompanyAdministrator(membership: Membership) {
   return membership.role === "owner" || membership.role === "admin";
 }
 export function canReadTask(
-  userId: string,
+  _userId: string,
   membership: Membership,
-  task: {
+  _task: {
     creatorId?: string;
     assigneeIds?: string[];
     viewerIds?: string[];
     departmentIds?: string[];
   },
 ) {
-  if (isCompanyAdministrator(membership)) return true;
-  if (
-    membership.permissionOverrides?.["todo.company_view"] === "allow" &&
-    simplePermissionAllowed(membership, "todo.company_view", "todo")
-  )
-    return true;
-  if (
-    task.creatorId === userId ||
-    task.assigneeIds?.includes(userId) ||
-    task.viewerIds?.includes(userId)
-  )
-    return true;
-  return (
-    membership.role === "manager" &&
-    Boolean(
-      task.departmentIds?.some((id) => membership.departmentIds?.includes(id)),
-    )
-  );
+  void _task;
+  // Toro's To-Do directory is company-visible by design. Mutation permissions
+  // remain independently enforced by the task routes.
+  return membership.status === "active" && membership.userType !== "portal";
 }
 export function crmGrant(
   membership: Membership,
@@ -79,6 +65,14 @@ export function crmGrant(
           : section === "pipelines" && action === "manage"
             ? "crm.pipeline.configure"
             : null;
+  if (simpleKey === "crm.opportunity.delete") {
+    const allowed = simplePermissionAllowed(
+      membership,
+      simpleKey,
+      "crm",
+    );
+    return allowed ? "all" : false;
+  }
   if (simpleKey && membership.permissionOverrides?.[simpleKey]) {
     const allowed = simplePermissionAllowed(membership, simpleKey, "crm");
     if (!allowed) return action === "view" ? "none" : false;

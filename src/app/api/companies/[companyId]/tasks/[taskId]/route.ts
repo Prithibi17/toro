@@ -10,6 +10,7 @@ import {
 import { appendAudit } from "@/lib/audit";
 import { canAssignTodoTo } from "@/lib/todo-assignment";
 import { crmAllowed } from "@/lib/crm-server";
+import { can } from "@/lib/can";
 const mention = z.object({
   entityType: z.enum(["member", "contact", "company", "tag"]),
   entityId: z.string().min(1).max(128),
@@ -287,6 +288,67 @@ export async function PATCH(
           e instanceof z.ZodError ? "Invalid update" : "Could not update To-Do",
       },
       { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(
+  _: Request,
+  { params }: { params: Promise<{ companyId: string; taskId: string }> },
+) {
+  const { companyId, taskId } = await params;
+  const auth = await authorizeCompany(companyId, { module: "todo" });
+  if (!auth.ok)
+    return NextResponse.json(
+      { error: "Access denied" },
+      { status: authorizationStatus(auth.reason) },
+    );
+  if (!can(auth.access, "todo.delete", "todo"))
+    return NextResponse.json(
+      { error: "Only the Owner or a member with delete authority can delete To-Dos" },
+      { status: 403 },
+    );
+  try {
+    const db = getAdmin().db;
+    const ref = db.doc(`companies/${companyId}/tasks/${taskId}`);
+    const task = await ref.get();
+    if (!task.exists)
+      return NextResponse.json({ error: "To-Do not found" }, { status: 404 });
+    const [history, activities] = await Promise.all([
+      db
+        .collection(`companies/${companyId}/todoHistory`)
+        .where("todoId", "==", taskId)
+        .limit(300)
+        .get(),
+      db
+        .collection(`companies/${companyId}/crmActivities`)
+        .where("relatedId", "==", taskId)
+        .limit(150)
+        .get(),
+    ]);
+    const batch = db.batch();
+    history.docs.forEach((document) => batch.delete(document.ref));
+    activities.docs
+      .filter((document) => document.data().relatedType === "task")
+      .forEach((document) => batch.delete(document.ref));
+    batch.delete(ref);
+    appendAudit(
+      db,
+      companyId,
+      {
+        actorId: auth.access.user.uid,
+        action: "todo.deleted",
+        entityType: "todo",
+        entityId: taskId,
+      },
+      batch,
+    );
+    await batch.commit();
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not delete To-Do" },
+      { status: 500 },
     );
   }
 }

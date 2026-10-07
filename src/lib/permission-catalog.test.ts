@@ -66,4 +66,16 @@ describe("simple permission experience", () => {
       simplePermissionAllowed(owner, "crm.opportunity.delete", "crm"),
     ).toBe(true);
   });
+
+  it("limits permanent To-Do deletion to administrators or explicit authority", () => {
+    expect(simplePermissionAllowed(membership("employee"), "todo.delete", "todo")).toBe(false);
+    expect(simplePermissionAllowed(membership("admin"), "todo.delete", "todo")).toBe(true);
+    expect(
+      simplePermissionAllowed(
+        membership("employee", { "todo.delete": "allow" }),
+        "todo.delete",
+        "todo",
+      ),
+    ).toBe(true);
+  });
 });

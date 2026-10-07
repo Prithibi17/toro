@@ -144,6 +144,14 @@ export const SIMPLE_PERMISSIONS: SimplePermission[] = [
     app: "todo",
   },
   {
+    key: "todo.delete",
+    group: "To-Do",
+    label: "Delete tasks",
+    description: "Permanently delete To-Dos and their activity history.",
+    app: "todo",
+    protected: true,
+  },
+  {
     key: "calendar.team_view",
     group: "Calendar",
     label: "See team calendars",

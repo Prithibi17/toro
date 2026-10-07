@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Search,
   UserRound,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -24,6 +25,7 @@ export function TodoRecord({
   history,
   members,
   currentAssignee,
+  canDelete,
 }: {
   companyId: string;
   task: I;
@@ -31,12 +33,15 @@ export function TodoRecord({
   history: I[];
   members: I[];
   currentAssignee?: I;
+  canDelete: boolean;
 }) {
   const router = useRouter(),
     [record, setRecord] = useState(task),
     [timeline, setTimeline] = useState(history),
     [activity, setActivity] = useState(false),
     [archiveConfirm, setArchiveConfirm] = useState(false),
+    [deleteConfirm, setDeleteConfirm] = useState(false),
+    [deleting, setDeleting] = useState(false),
     [assigneeOpen, setAssigneeOpen] = useState(false),
     [memberSearch, setMemberSearch] = useState(""),
     [error, setError] = useState("");
@@ -134,6 +139,22 @@ export function TodoRecord({
       ]);
     } else setError((await r.json()).error);
   }
+  async function deleteTask() {
+    setDeleting(true);
+    setError("");
+    const response = await fetch(
+      `/api/companies/${companyId}/tasks/${record.id}`,
+      { method: "DELETE" },
+    );
+    if (response.ok) {
+      router.push(`/workspace/${companyId}/todo`);
+      router.refresh();
+      return;
+    }
+    setError((await response.json()).error ?? "Could not delete To-Do");
+    setDeleting(false);
+    setDeleteConfirm(false);
+  }
   return (
     <>
       <div className="mb-5 flex flex-wrap justify-between gap-3">
@@ -181,6 +202,15 @@ export function TodoRecord({
             <Archive size={16} />
             Move to Archive
           </button>
+          {canDelete && (
+            <button
+              className="btn bg-red-600 text-white hover:bg-red-700"
+              onClick={() => setDeleteConfirm(true)}
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+          )}
         </div>
       </div>
       {error && <p className="mb-4 text-sm text-red-500">{error}</p>}
@@ -375,6 +405,16 @@ export function TodoRecord({
           setArchiveConfirm(false);
           void update({ archived: true });
         }}
+      />
+      <ConfirmDialog
+        open={deleteConfirm}
+        title="Permanently delete this To-Do?"
+        description="This permanently deletes the To-Do, its activity history, and linked scheduled activities. This action cannot be undone."
+        confirmLabel="Delete Permanently"
+        destructive
+        busy={deleting}
+        onCancel={() => setDeleteConfirm(false)}
+        onConfirm={() => void deleteTask()}
       />
     </>
   );

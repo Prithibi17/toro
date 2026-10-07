@@ -5,7 +5,10 @@ import {
   opportunityAccess,
   crmReadable,
 } from "@/lib/crm-server";
-import { updateOpportunity } from "@/lib/crm-opportunities";
+import {
+  deleteOpportunity,
+  updateOpportunity,
+} from "@/lib/crm-opportunities";
 type Context = { params: Promise<{ companyId: string; recordId: string }> };
 export async function GET(_: Request, { params }: Context) {
   try {
@@ -29,6 +32,20 @@ export async function PATCH(req: Request, { params }: Context) {
         await req.json(),
       ),
     });
+  } catch (e) {
+    return crmError(e);
+  }
+}
+
+export async function DELETE(_: Request, { params }: Context) {
+  try {
+    const { companyId, recordId } = await params;
+    await deleteOpportunity(
+      companyId,
+      recordId,
+      await crmAccess(companyId),
+    );
+    return NextResponse.json({ ok: true });
   } catch (e) {
     return crmError(e);
   }

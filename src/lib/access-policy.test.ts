@@ -40,25 +40,30 @@ describe("task visibility", () => {
     expect(canReadTask("u", m, { assigneeIds: ["u"] })).toBe(true);
     expect(canReadTask("u", m, { viewerIds: ["u"] })).toBe(true);
   });
-  it("denies unrelated employee and allows manager department scope", () => {
+  it("allows every active internal member to view company tasks", () => {
     expect(
       canReadTask("u", member("employee", {}, ["sales"]), {
         departmentIds: ["sales"],
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       canReadTask("u", member("manager", {}, ["sales"]), {
         departmentIds: ["sales"],
       }),
     ).toBe(true);
     expect(
-      canReadTask("u", member("manager", {}, ["sales"]), {
+      canReadTask("u", member("employee", {}, ["sales"]), {
         departmentIds: ["finance"],
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 describe("CRM permission resolution", () => {
+  it("gives administrators visible opportunity delete authority", () => {
+    const admin = member("admin");
+    admin.crmPermissions = { opportunities: { delete: "none" } };
+    expect(crmGrant(admin, "opportunities", "delete")).toBe("all");
+  });
   it("limits team visibility to server-resolved active teams", () => {
     const m = member("employee");
     m.resourcePermissions = {

@@ -108,6 +108,7 @@ export default async function Page({
       files={files.docs.map(plainDoc)}
       permissions={{
         edit: crmAllowed(access, "opportunities", "edit", record),
+        delete: crmAllowed(access, "opportunities", "delete", record),
         move: crmAllowed(access, "opportunities", "moveStage", record),
         close: crmAllowed(access, "opportunities", "close", record),
         assign: crmAllowed(access, "opportunities", "assign", record),

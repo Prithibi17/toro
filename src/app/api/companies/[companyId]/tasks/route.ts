@@ -69,7 +69,9 @@ export async function GET(
         (d) =>
           !d.data().archivedAt &&
           canReadTask(a.access.user.uid, a.access.membership, d.data()) &&
-          (view === "created"
+          (view === "all"
+            ? true
+            : view === "created"
             ? d.data().creatorId === a.access.user.uid
             : view === "assigned-by-me"
               ? d.data().creatorId === a.access.user.uid &&

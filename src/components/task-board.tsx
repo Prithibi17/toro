@@ -127,6 +127,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
             <option value="assigned">My To-Do</option>
             <option value="created">Created by Me</option>
             <option value="assigned-by-me">Assigned by Me</option>
+            <option value="all">All To-Dos</option>
           </select>
           <div className="flex min-w-64 items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3">
             <Search size={16} />

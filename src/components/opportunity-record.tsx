@@ -13,6 +13,7 @@ import {
   Plus,
   Paperclip,
   StickyNote,
+  Trash2,
 } from "lucide-react";
 import {
   Priority,
@@ -27,6 +28,7 @@ import { TagSelector, type SharedTag } from "./tag-selector";
 import { ConfirmDialog } from "./confirm-dialog";
 type Permissions = {
   edit: boolean;
+  delete: boolean;
   move: boolean;
   close: boolean;
   assign: boolean;
@@ -75,6 +77,7 @@ export function OpportunityRecord({
     [form, setForm] = useState(opportunity),
     [editing, setEditing] = useState(false),
     [archiveConfirm, setArchiveConfirm] = useState(false),
+    [deleteConfirm, setDeleteConfirm] = useState(false),
     [dialog, setDialog] = useState(
       params.get("action") === "lost" ? "lost" : "",
     ),
@@ -143,6 +146,19 @@ export function OpportunityRecord({
       setBusy(false);
     }
   };
+  async function deleteOpportunity() {
+    setBusy(true);
+    setError("");
+    try {
+      await crmRequest(base, "DELETE");
+      router.push(`/workspace/${companyId}/crm`);
+      router.refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not delete opportunity");
+      setDeleteConfirm(false);
+      setBusy(false);
+    }
+  }
   const patch = async (updates: Record<string, unknown>) => {
     const result = await crmRequest(base, "PATCH", {
       ...updates,
@@ -331,6 +347,14 @@ export function OpportunityRecord({
                 )}
               </div>
             </details>
+            {permissions.delete && (
+              <button
+                className="btn bg-red-600 text-white hover:bg-red-700 !py-2"
+                onClick={() => setDeleteConfirm(true)}
+              >
+                <Trash2 size={16} /> Delete
+              </button>
+            )}
           </div>
           <div className="flex gap-2">
             <button
@@ -1060,6 +1084,16 @@ export function OpportunityRecord({
           setArchiveConfirm(false);
           void run(() => patch({ archived: true }));
         }}
+      />
+      <ConfirmDialog
+        open={deleteConfirm}
+        title="Permanently delete this opportunity?"
+        description="This permanently deletes the CRM opportunity, its timeline, activities, and attachments. Linked sales records are preserved. This action cannot be undone."
+        confirmLabel="Delete Permanently"
+        destructive
+        busy={busy}
+        onCancel={() => setDeleteConfirm(false)}
+        onConfirm={() => void deleteOpportunity()}
       />
     </div>
   );
