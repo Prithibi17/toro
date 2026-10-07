@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import type { PermissionKey } from "@/lib/types";
+import { ConfirmDialog } from "./confirm-dialog";
 type Member = {
   id: string;
   displayName?: string;
@@ -104,6 +105,8 @@ export function EmployeeManager({
   const [error, setError] = useState("");
   const [menu, setMenu] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("active");
+  const [invitationToCancel, setInvitationToCancel] =
+    useState<Invitation | null>(null);
   const [removal, setRemoval] = useState<{
     member: Member;
     counts?: {
@@ -174,6 +177,7 @@ export function EmployeeManager({
         current.filter((item) => item.id !== invitation.id),
       );
     else setError(result.error);
+    setInvitationToCancel(null);
     setBusy(false);
   }
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -296,7 +300,7 @@ export function EmployeeManager({
               <button
                 className="btn btn-secondary text-red-500"
                 disabled={busy}
-                onClick={() => void cancelInvitation(invitation)}
+                onClick={() => setInvitationToCancel(invitation)}
               >
                 Cancel Invitation
               </button>
@@ -621,6 +625,18 @@ export function EmployeeManager({
           </form>
         </div>
       )}
+      <ConfirmDialog
+        open={invitationToCancel !== null}
+        title="Cancel this invitation?"
+        description={`This permanently removes the pending invitation for ${invitationToCancel?.email ?? "this person"}. It does not delete an existing Toro account.`}
+        confirmLabel="Cancel Invitation"
+        destructive
+        busy={busy}
+        onCancel={() => setInvitationToCancel(null)}
+        onConfirm={() => {
+          if (invitationToCancel) void cancelInvitation(invitationToCancel);
+        }}
+      />
     </>
   );
 }

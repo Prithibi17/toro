@@ -15,6 +15,7 @@ import {
   TodoDescriptionEditor,
   type TodoMention,
 } from "./todo-description-editor";
+import { ConfirmDialog } from "./confirm-dialog";
 type I = Record<string, unknown> & { id: string };
 export function TodoRecord({
   companyId,
@@ -35,6 +36,7 @@ export function TodoRecord({
     [record, setRecord] = useState(task),
     [timeline, setTimeline] = useState(history),
     [activity, setActivity] = useState(false),
+    [archiveConfirm, setArchiveConfirm] = useState(false),
     [assigneeOpen, setAssigneeOpen] = useState(false),
     [memberSearch, setMemberSearch] = useState(""),
     [error, setError] = useState("");
@@ -174,10 +176,10 @@ export function TodoRecord({
           </button>
           <button
             className="btn btn-secondary"
-            onClick={() => update({ archived: true })}
+            onClick={() => setArchiveConfirm(true)}
           >
             <Archive size={16} />
-            Archive
+            Move to Archive
           </button>
         </div>
       </div>
@@ -363,6 +365,17 @@ export function TodoRecord({
           </form>
         </div>
       )}
+      <ConfirmDialog
+        open={archiveConfirm}
+        title="Move this To-Do to the archive?"
+        description="This does not delete the To-Do. It will be hidden from your active list, while its details and activity history remain safely stored."
+        confirmLabel="Move to Archive"
+        onCancel={() => setArchiveConfirm(false)}
+        onConfirm={() => {
+          setArchiveConfirm(false);
+          void update({ archived: true });
+        }}
+      />
     </>
   );
 }

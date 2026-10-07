@@ -24,6 +24,7 @@ import {
 } from "./crm-controls";
 import { getActivityState, normalizePriority } from "@/lib/crm-query";
 import { TagSelector, type SharedTag } from "./tag-selector";
+import { ConfirmDialog } from "./confirm-dialog";
 type Permissions = {
   edit: boolean;
   move: boolean;
@@ -73,6 +74,7 @@ export function OpportunityRecord({
   const [record, setRecord] = useState(opportunity),
     [form, setForm] = useState(opportunity),
     [editing, setEditing] = useState(false),
+    [archiveConfirm, setArchiveConfirm] = useState(false),
     [dialog, setDialog] = useState(
       params.get("action") === "lost" ? "lost" : "",
     ),
@@ -309,11 +311,13 @@ export function OpportunityRecord({
                     </button>
                     <button
                       className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--soft)]"
-                      onClick={() =>
-                        void run(() => patch({ archived: !record.archived }))
-                      }
+                      onClick={() => {
+                        if (record.archived)
+                          void run(() => patch({ archived: false }));
+                        else setArchiveConfirm(true);
+                      }}
                     >
-                      {record.archived ? "Unarchive" : "Archive"}
+                      {record.archived ? "Restore from Archive" : "Move to Archive"}
                     </button>
                   </>
                 )}
@@ -1045,6 +1049,18 @@ export function OpportunityRecord({
           </form>
         </Modal>
       )}
+      <ConfirmDialog
+        open={archiveConfirm}
+        title="Move this opportunity to the archive?"
+        description="This does not delete the opportunity. It will be removed from active CRM views, while its details and history remain stored."
+        confirmLabel="Move to Archive"
+        busy={busy}
+        onCancel={() => setArchiveConfirm(false)}
+        onConfirm={() => {
+          setArchiveConfirm(false);
+          void run(() => patch({ archived: true }));
+        }}
+      />
     </div>
   );
 }
