@@ -5,6 +5,12 @@ export type OpportunityContact = {
   email?: unknown;
   phone?: unknown;
   mobile?: unknown;
+  contactType?: unknown;
+  tags?: unknown;
+  address?: {
+    city?: unknown;
+    country?: unknown;
+  } | null;
 };
 
 export type OpportunityDraft = {
@@ -14,6 +20,9 @@ export type OpportunityDraft = {
   value: string;
   email: string;
   phone: string;
+  city: string;
+  country: string;
+  tags: string[];
 };
 
 const text = (value: unknown) =>
@@ -27,6 +36,9 @@ export function blankOpportunityDraft(ownerId = ""): OpportunityDraft {
     value: "0",
     email: "",
     phone: "",
+    city: "",
+    country: "",
+    tags: [],
   };
 }
 
@@ -40,6 +52,9 @@ export function autofillOpportunityFromContact(
       customerId: "",
       email: "",
       phone: "",
+      city: "",
+      country: "",
+      tags: [],
     };
 
   return {
@@ -47,5 +62,10 @@ export function autofillOpportunityFromContact(
     customerId: contact.id,
     email: text(contact.email),
     phone: text(contact.phone) || text(contact.mobile),
+    city: text(contact.address?.city),
+    country: text(contact.address?.country),
+    tags: Array.isArray(contact.tags)
+      ? contact.tags.filter((tag): tag is string => typeof tag === "string")
+      : [],
   };
 }

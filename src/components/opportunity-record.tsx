@@ -486,12 +486,32 @@ export function OpportunityRecord({
                         className="input"
                         disabled={key !== "customerId" && !permissions.assign}
                         value={String(form[key] ?? "")}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (key !== "customerId") {
+                            setForm((f) => ({ ...f, [key]: value || null }));
+                            return;
+                          }
+                          const contact = contacts.find((item) => item.id === value);
+                          const address =
+                            contact?.address && typeof contact.address === "object"
+                              ? (contact.address as Record<string, unknown>)
+                              : {};
                           setForm((f) => ({
                             ...f,
-                            [key]: e.target.value || null,
-                          }))
-                        }
+                            customerId: value || null,
+                            email: value ? String(contact?.email ?? "") : "",
+                            phone: value
+                              ? String(contact?.phone ?? contact?.mobile ?? "")
+                              : "",
+                            city: value ? String(address.city ?? "") : "",
+                            country: value ? String(address.country ?? "") : "",
+                            tags:
+                              value && Array.isArray(contact?.tags)
+                                ? contact.tags
+                                : [],
+                          }));
+                        }}
                       >
                         <option value="">Unassigned</option>
                         {(key === "customerId"
@@ -569,7 +589,7 @@ export function OpportunityRecord({
                   {String(record.email || customer?.email || "—")}
                 </Value>
                 <Value label="Phone">
-                  {String(record.phone || customer?.phone || "—")}
+                  {String(record.phone || customer?.phone || customer?.mobile || "—")}
                 </Value>
                 <Value label="Priority">
                   <Priority
@@ -590,7 +610,9 @@ export function OpportunityRecord({
                 </Value>
                 <Value label="Tags">
                   <div className="flex flex-wrap gap-1">
-                    {((record.tags as string[]) ?? []).map((id) => {
+                    {(((record.tags as string[])?.length
+                      ? record.tags
+                      : customer?.tags) as string[] ?? []).map((id) => {
                       const tag = tags.find((item) => item.id === id);
                       return (
                         <span
@@ -601,7 +623,9 @@ export function OpportunityRecord({
                         </span>
                       );
                     })}
-                    {!((record.tags as string[]) ?? []).length && "—"}
+                    {!(((record.tags as string[])?.length
+                      ? record.tags
+                      : customer?.tags) as string[] ?? []).length && "—"}
                   </div>
                 </Value>
                 {record.status === "lost" && (
@@ -636,7 +660,15 @@ export function OpportunityRecord({
                       {["source", "medium", "campaign", "city", "country"].map(
                         (key) => (
                           <Value label={key} key={key}>
-                            {String(record[key] || "—")}
+                            {String(
+                              record[key] ||
+                                ((key === "city" || key === "country") &&
+                                customer?.address &&
+                                typeof customer.address === "object"
+                                  ? (customer.address as Record<string, unknown>)[key]
+                                  : "") ||
+                                "—",
+                            )}
                           </Value>
                         ),
                       )}

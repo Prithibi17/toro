@@ -301,6 +301,11 @@ export function CrmWorkspace({
         value: Number(body.value),
         priority,
         currency,
+        email: opportunityDraft.email,
+        phone: opportunityDraft.phone,
+        city: opportunityDraft.city,
+        country: opportunityDraft.country,
+        tags: opportunityDraft.tags,
       });
       setStage(null);
       setOpportunityDraft(blankOpportunityDraft(data.userId));
@@ -1299,6 +1304,17 @@ export function CrmWorkspace({
                 )}
               </Field>
             ))}
+            {opportunityDraft.customerId && (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 text-sm sm:col-span-2">
+                <b className="text-emerald-700 dark:text-emerald-400">
+                  Contact information linked
+                </b>
+                <p className="mt-1 muted">
+                  Email, phone, location and tags available on this contact will
+                  be copied into the opportunity.
+                </p>
+              </div>
+            )}
             <Field label="Priority">
               <Priority value={priority} onChange={setPriority} />
             </Field>

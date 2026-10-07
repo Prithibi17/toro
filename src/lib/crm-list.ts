@@ -78,6 +78,14 @@ export async function crmList(
         phone: x.phone ?? "",
         mobile: x.mobile ?? "",
         contactType: x.contactType ?? "person",
+        tags: Array.isArray(x.tags) ? x.tags : [],
+        address:
+          x.address && typeof x.address === "object"
+            ? {
+                city: (x.address as Record<string, unknown>).city ?? "",
+                country: (x.address as Record<string, unknown>).country ?? "",
+              }
+            : null,
       };
     });
   const members = membersSnap.docs.map((d) => ({

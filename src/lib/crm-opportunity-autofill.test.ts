@@ -15,6 +15,8 @@ describe("CRM opportunity contact autofill", () => {
           email: "sales@acme.test",
           phone: "",
           mobile: "+91 99999 99999",
+          tags: ["b2b"],
+          address: { city: "Etawah", country: "India" },
         },
       ),
     ).toEqual({
@@ -24,6 +26,9 @@ describe("CRM opportunity contact autofill", () => {
       value: "0",
       email: "sales@acme.test",
       phone: "+91 99999 99999",
+      city: "Etawah",
+      country: "India",
+      tags: ["b2b"],
     });
   });
 
