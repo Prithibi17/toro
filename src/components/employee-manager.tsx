@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { PermissionKey } from "@/lib/types";
 import { ConfirmDialog } from "./confirm-dialog";
+import { DepartmentManager } from "./department-manager";
 type Member = {
   id: string;
   displayName?: string;
@@ -21,7 +22,7 @@ type Member = {
   departmentIds?: string[];
   jobTitle?: string;
 };
-type Department = { id: string; name: string };
+type Department = { id: string; name: string; workDays?: number[] };
 type CompanyRole = { id: string; name: string; description?: string };
 type Invitation = {
   id: string;
@@ -85,7 +86,8 @@ export function EmployeeManager({
   companyId,
   companyName,
   initialInvitations,
-  isOwner,
+  canManageDepartments,
+  canInviteMembers,
   initialMembers,
   departments,
   roles,
@@ -93,7 +95,8 @@ export function EmployeeManager({
   companyId: string;
   companyName: string;
   initialInvitations: Invitation[];
-  isOwner: boolean;
+  canManageDepartments: boolean;
+  canInviteMembers: boolean;
   initialMembers: Member[];
   departments: Department[];
   roles: CompanyRole[];
@@ -233,13 +236,16 @@ export function EmployeeManager({
             Roles, departments and effective permissions for this company.
           </p>
         </div>
-        {isOwner && (
+        {canInviteMembers && (
           <button className="btn btn-primary" onClick={() => setOpen(true)}>
             <CirclePlus size={18} />
             Add member
           </button>
         )}
       </div>
+      {canManageDepartments && (
+        <DepartmentManager companyId={companyId} initialDepartments={departments} />
+      )}
       {error && !open && !removal && (
         <p className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-500">
           {error}

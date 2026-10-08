@@ -4,6 +4,7 @@ import { getAdmin } from "@/lib/firebase-admin";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { serializeFirestore } from "@/lib/firestore-serialization";
 import { SettingsWorkspace } from "@/components/settings-workspace";
+import { simplePermissionAllowed } from "@/lib/permission-catalog";
 
 const sections = new Set([
   "general",
@@ -40,6 +41,7 @@ export default async function Page({
   const canManageMembers =
     membership.role === "owner" ||
     membership.role === "admin" ||
+    simplePermissionAllowed(membership, "employees.manage") ||
     effectivePermissions.actions["security.members.manage"] === true ||
     effectivePermissions.legacyPermissions["members.manage"] === true;
   const canManageApps =

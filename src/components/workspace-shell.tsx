@@ -31,6 +31,7 @@ import { Logo } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 import { NotificationCenter } from "./notification-menu";
 import { WorkspaceSearch } from "./workspace-search";
+import { AttendanceHeartbeat } from "./attendance-heartbeat";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { auth } from "@/lib/firebase-client";
 const glyphs: Record<ModuleKey, ComponentType<{ size?: number }>> = {
@@ -52,6 +53,8 @@ const glyphs: Record<ModuleKey, ComponentType<{ size?: number }>> = {
 export function WorkspaceShell({
   companyId,
   companyName,
+  accountId,
+  accountName,
   role,
   modules,
   canManageMembers,
@@ -60,6 +63,8 @@ export function WorkspaceShell({
 }: {
   companyId: string;
   companyName: string;
+  accountId: string;
+  accountName: string;
   role: string;
   modules: ModuleKey[];
   canManageMembers: boolean;
@@ -71,6 +76,10 @@ export function WorkspaceShell({
   const companyMenuRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   const base = `/workspace/${companyId}`;
+  const accountHue = Array.from(accountId).reduce(
+    (hash, character) => (hash * 31 + character.charCodeAt(0)) % 360,
+    0,
+  );
   const links = [
     {
       href: `${base}/dashboard`,
@@ -123,17 +132,18 @@ export function WorkspaceShell({
     location.href = "/login";
   }
   return (
-    <div className="min-h-screen md:grid md:grid-cols-[248px_1fr]">
+    <div className="min-h-screen md:pl-[248px]">
+      <AttendanceHeartbeat companyId={companyId} />
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-[248px] bg-[var(--sidebar)] p-4 text-[var(--sidebarText)] transition md:static md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-[248px] flex-col overflow-hidden bg-[var(--sidebar)] p-4 text-[var(--sidebarText)] transition-transform md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center justify-between px-2 py-1">
+        <div className="flex shrink-0 items-center justify-between px-2 py-1">
           <Logo />
           <button className="md:hidden" onClick={() => setOpen(false)}>
             <X />
           </button>
         </div>
-        <div className="relative my-6" ref={companyMenuRef}>
+        <div className="relative my-6 shrink-0" ref={companyMenuRef}>
           <button
             type="button"
             aria-expanded={companyMenu}
@@ -181,38 +191,40 @@ export function WorkspaceShell({
             </div>
           )}
         </div>
-        <nav className="space-y-1">
-          {links.map((l) => (
-            <Link
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${path === l.href ? "bg-[var(--accent)] text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
-              href={l.href}
-              key={l.href}
-            >
-              {l.icon}
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-        <p className="mb-2 mt-7 px-3 text-[10px] font-bold uppercase tracking-[.2em] text-white/35">
-          Enabled apps
-        </p>
-        <nav className="space-y-1">
-          {MODULES.filter((m) => modules.includes(m.key)).map((m) => {
-            const Icon = glyphs[m.key];
-            return (
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-3">
+          <nav className="space-y-1">
+            {links.map((l) => (
               <Link
-                key={m.key}
-                href={`${base}/${m.key}`}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${path === `${base}/${m.key}` ? "bg-white/8 text-white" : "text-white/55 hover:bg-white/5 hover:text-white"}`}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${path === l.href ? "bg-[var(--accent)] text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
+                href={l.href}
+                key={l.href}
               >
-                <span className="grid w-5 place-items-center">
-                  <Icon size={16} />
-                </span>
-                {m.name}
+                {l.icon}
+                {l.label}
               </Link>
-            );
-          })}
-        </nav>
+            ))}
+          </nav>
+          <p className="mb-2 mt-7 px-3 text-[10px] font-bold uppercase tracking-[.2em] text-white/35">
+            Enabled apps
+          </p>
+          <nav className="space-y-1">
+            {MODULES.filter((m) => modules.includes(m.key)).map((m) => {
+              const Icon = glyphs[m.key];
+              return (
+                <Link
+                  key={m.key}
+                  href={`${base}/${m.key}`}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${path === `${base}/${m.key}` ? "bg-white/8 text-white" : "text-white/55 hover:bg-white/5 hover:text-white"}`}
+                >
+                  <span className="grid w-5 place-items-center">
+                    <Icon size={16} />
+                  </span>
+                  {m.name}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
       </aside>
       <div className="min-w-0">
         <header className="sticky top-0 z-30 flex h-17 items-center gap-3 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] px-4 backdrop-blur-lg sm:px-7">
@@ -229,8 +241,13 @@ export function WorkspaceShell({
           <div className="ml-auto flex gap-2">
             <ThemeToggle />
             <NotificationCenter companyId={companyId} />
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent)] font-bold text-white">
-              {companyName[0]?.toUpperCase()}
+            <span
+              className="grid h-10 w-10 place-items-center rounded-full font-bold text-white"
+              style={{ backgroundColor: `hsl(${accountHue} 68% 46%)` }}
+              title={accountName}
+              aria-label={`Signed in as ${accountName}`}
+            >
+              {accountName.trim()[0]?.toUpperCase() || "U"}
             </span>
           </div>
         </header>

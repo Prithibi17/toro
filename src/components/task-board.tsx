@@ -9,6 +9,10 @@ import {
 } from "lucide-react";
 import { WorkspaceEntityInput } from "./workspace-entity-input";
 import { cachedJson, invalidateClientCache } from "@/lib/client-api-cache";
+import {
+  deadlinePresentation,
+  todoDeadlineStatus,
+} from "@/lib/todo-deadline";
 type Task = {
   id: string;
   title: string;
@@ -104,12 +108,6 @@ export function TaskBoard({ companyId }: { companyId: string }) {
       setNewStage(false);
     } else setError((await r.json()).error);
   }
-  const overdue = (t: Task) =>
-    Boolean(
-      t.dueDate &&
-      !t.completedAt &&
-      new Date(t.dueDate) < new Date(new Date().toDateString()),
-    );
   return (
     <>
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -177,7 +175,15 @@ export function TaskBoard({ companyId }: { companyId: string }) {
               <div className="space-y-2">
                 {visible
                   .filter((t) => t.stageId === stage.id)
-                  .map((t) => (
+                  .map((t) => {
+                    const deadline = todoDeadlineStatus(
+                      t.dueDate,
+                      t.completedAt,
+                    );
+                    const deadlineUi = deadline
+                      ? deadlinePresentation[deadline]
+                      : null;
+                    return (
                     <article
                       key={t.id}
                       draggable
@@ -195,7 +201,8 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                       <div className="flex justify-between gap-2">
                         <b>{t.title}</b>
                         <i
-                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${t.priority === "urgent" ? "bg-red-500" : t.priority === "high" ? "bg-orange-500" : "bg-slate-400"}`}
+                          title={deadlineUi?.label ?? `${t.priority} priority`}
+                          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${deadlineUi?.dotClass ?? (t.priority === "urgent" ? "bg-red-500" : t.priority === "high" ? "bg-orange-500" : "bg-slate-400")}`}
                         />
                       </div>
                       {t.description && (
@@ -205,10 +212,15 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                       )}
                       {t.dueDate && (
                         <p
-                          className={`mt-3 flex items-center gap-1 text-xs ${overdue(t) ? "text-red-500" : "muted"}`}
+                          className={`mt-3 flex items-center gap-1 text-xs ${deadlineUi?.textClass ?? "muted"}`}
                         >
                           <Calendar size={13} />
-                          {overdue(t) ? "Overdue · " : ""}
+                          {deadlineUi && (
+                            <span
+                              className={`h-2 w-2 rounded-full ${deadlineUi.dotClass}`}
+                            />
+                          )}
+                          {deadlineUi ? `${deadlineUi.label} · ` : ""}
                           {t.dueDate}
                         </p>
                       )}
@@ -232,7 +244,8 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                         </div>
                       )}
                     </article>
-                  ))}
+                    );
+                  })}
                 {adding === stage.id ? (
                   <form
                     className="panel p-3"

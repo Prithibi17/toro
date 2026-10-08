@@ -98,6 +98,9 @@ export async function PATCH(
           { status: 403 },
         );
       update.assigneeIds = [newAssignee.id];
+      update.assignedById = a.access.user.uid;
+      update.assignedByName =
+        a.access.user.name ?? a.access.user.email ?? "User";
     }
     if (stage) {
       update.status = stage.data()?.legacyStatus || "todo";

@@ -148,6 +148,8 @@ export async function POST(
         creatorId: a.access.user.uid,
         creatorName: a.access.user.name ?? a.access.user.email ?? "User",
         assigneeIds: [assigneeId],
+        assignedById: a.access.user.uid,
+        assignedByName: a.access.user.name ?? a.access.user.email ?? "User",
         viewerIds: [],
         departmentIds: a.access.membership.departmentIds ?? [],
         sequence: Date.now(),

@@ -3,6 +3,7 @@ import { authorizeCompanyPage } from "@/lib/authorization";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { appAllowed } from "@/lib/permission-engine";
 import { MODULES } from "@/lib/types";
+import { simplePermissionAllowed } from "@/lib/permission-catalog";
 export const dynamic = "force-dynamic";
 export default async function Layout({
   children,
@@ -20,6 +21,7 @@ export default async function Layout({
   }
   if (!authz.ok) notFound();
   const { membership: m, effectivePermissions } = authz.access;
+  const account = authz.access.user;
   const modules = MODULES.map((x) => x.key).filter(
     (module) =>
       m.enabledModules?.includes(module) &&
@@ -27,6 +29,7 @@ export default async function Layout({
   );
   const canManageMembers =
     m.role === "owner" ||
+    simplePermissionAllowed(m, "employees.manage") ||
     effectivePermissions.actions["security.members.manage"] === true ||
     effectivePermissions.legacyPermissions["members.manage"] === true;
   const canManageApps =
@@ -37,6 +40,8 @@ export default async function Layout({
     <WorkspaceShell
       companyId={companyId}
       companyName={m.companyName || "Company"}
+      accountId={account.uid}
+      accountName={account.name || account.email || "User"}
       role={m.role || "member"}
       modules={modules}
       canManageMembers={canManageMembers}

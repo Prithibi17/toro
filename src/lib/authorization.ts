@@ -20,6 +20,15 @@ import {
   legacyPermissionAllowed,
   type EffectivePermissions,
 } from "./permission-engine";
+import { simplePermissionAllowed } from "./permission-catalog";
+
+const simpleLegacyPermission: Partial<Record<PermissionKey, string>> = {
+  "members.manage": "employees.manage",
+  "tasks.assign": "todo.assign",
+  "crm.manage": "crm.pipeline.configure",
+  "contacts.manage": "contacts.create",
+  "sales.manage": "sales.quotation.create",
+};
 
 export type AuthorizationFailure =
   | "unauthenticated"
@@ -105,7 +114,11 @@ export async function authorizeCompany(
     return { ok: false, reason: "permission_denied" };
   if (
     requirements.permission &&
-    !legacyPermissionAllowed(membership, effective, requirements.permission)
+    !permissionAllowed(
+      membership,
+      effective,
+      requirements.permission,
+    )
   ) {
     return { ok: false, reason: "permission_denied" };
   }
@@ -135,6 +148,21 @@ export async function authorizeCompany(
       effectivePermissions: effective,
     },
   };
+}
+
+function permissionAllowed(
+  membership: Membership,
+  effective: EffectivePermissions,
+  permission: PermissionKey,
+) {
+  const simple = simpleLegacyPermission[permission];
+  if (!simple) return legacyPermissionAllowed(membership, effective, permission);
+  if (membership.permissionOverrides?.[simple])
+    return simplePermissionAllowed(membership, simple);
+  return (
+    simplePermissionAllowed(membership, simple) ||
+    legacyPermissionAllowed(membership, effective, permission)
+  );
 }
 
 // Layouts and their pages share this request-scoped access check.

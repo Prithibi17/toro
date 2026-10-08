@@ -5,8 +5,8 @@ import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { appendAudit } from "@/lib/audit";
 import type { PermissionKey } from "@/lib/types";
-import { MODULES } from "@/lib/types";
 import { SIMPLE_PERMISSIONS } from "@/lib/permission-catalog";
+import { memberAccessUpdateInput } from "@/lib/member-access-input";
 const keys = [
   "members.manage",
   "apps.manage",
@@ -37,23 +37,6 @@ const input = z.object({
   departmentIds: z.array(z.string()).max(10),
   permissions: z.array(z.enum(keys)).max(keys.length),
   crmPermissions: z.record(z.string(), crmSection).default({}),
-});
-const updateInput = z.object({
-  userId: z.string().min(1),
-  role: z.enum(["admin", "manager", "employee", "intern"]).optional(),
-  roleIds: z.array(z.string().min(1)).max(20).optional(),
-  status: z.enum(["active", "suspended"]).optional(),
-  accessExpiresAt: z.string().datetime().nullable().optional(),
-  departmentIds: z.array(z.string().min(1)).max(20).optional(),
-  appAccess: z
-    .record(
-      z.enum(MODULES.map((module) => module.key) as [string, ...string[]]),
-      z.enum(["none", "user"]),
-    )
-    .optional(),
-  permissionOverrides: z
-    .record(z.string(), z.enum(["allow", "deny"]))
-    .optional(),
 });
 export async function POST(
   req: Request,
@@ -249,7 +232,7 @@ export async function PATCH(
       { status: authorizationStatus(authz.reason) },
     );
   try {
-    const data = updateInput.parse(await req.json());
+    const data = memberAccessUpdateInput.parse(await req.json());
     const db = getAdmin().db;
     const memberRef = db.doc(`companies/${companyId}/members/${data.userId}`);
     const target = await memberRef.get();
@@ -369,11 +352,17 @@ export async function PATCH(
     await batch.commit();
     return NextResponse.json({ ok: true });
   } catch (error) {
+    const validationMessage =
+      error instanceof z.ZodError
+        ? error.issues
+            .map((issue) => `${issue.path.join(".") || "request"}: ${issue.message}`)
+            .join("; ")
+        : null;
     return NextResponse.json(
       {
         error:
           error instanceof z.ZodError
-            ? "Invalid request"
+            ? `Invalid request${validationMessage ? ` — ${validationMessage}` : ""}`
             : "Could not update member access",
       },
       { status: 400 },

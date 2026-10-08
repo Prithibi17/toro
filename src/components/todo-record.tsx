@@ -141,6 +141,7 @@ export function TodoRecord({
         ...currentHistory,
       ]);
       if (body.archived) router.push(`/workspace/${companyId}/todo`);
+      window.dispatchEvent(new Event("toro:notifications-changed"));
       return true;
     } catch {
       setRecord(previous);

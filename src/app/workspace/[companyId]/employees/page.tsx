@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { authorizeCompany } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { EmployeeManager } from "@/components/employee-manager";
+import { simplePermissionAllowed } from "@/lib/permission-catalog";
 export default async function Page({
   params,
 }: {
@@ -32,7 +33,11 @@ export default async function Page({
     <EmployeeManager
       companyId={companyId}
       companyName={String(company.data()?.name ?? "this workspace")}
-      isOwner={authz.access.membership.role === "owner"}
+      canManageDepartments={["owner", "admin"].includes(authz.access.membership.role)}
+      canInviteMembers={
+        ["owner", "admin"].includes(authz.access.membership.role) ||
+        simplePermissionAllowed(authz.access.membership, "employees.invite")
+      }
       initialInvitations={invitations.docs.map((d) => ({
         id: d.id,
         email: d.data().email,
@@ -57,6 +62,7 @@ export default async function Page({
       departments={departments.docs.map((d) => ({
         id: d.id,
         name: d.data().name,
+        workDays: d.data().workDays ?? [1, 2, 3, 4, 5, 6],
       }))}
     />
   );
