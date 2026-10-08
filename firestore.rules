@@ -37,7 +37,8 @@ service cloud.firestore {
           !channel.data.keys().hasAny(["type"])
           || channel.data.type == "public"
           || (
-            channel.data.keys().hasAny(["memberIds"])
+            channel.data.type in ["dm", "group", "private", "project"]
+            && channel.data.keys().hasAny(["memberIds"])
             && request.auth.uid in channel.data.memberIds
           )
           || (

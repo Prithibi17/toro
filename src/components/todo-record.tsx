@@ -1,12 +1,15 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   ArrowLeft,
   Archive,
   CalendarClock,
   CheckCircle2,
+  Download,
+  FileText,
+  Paperclip,
   Search,
   UserRound,
   Trash2,
@@ -26,6 +29,7 @@ export function TodoRecord({
   members,
   currentAssignee,
   canDelete,
+  canPostProgress,
 }: {
   companyId: string;
   task: I;
@@ -34,6 +38,7 @@ export function TodoRecord({
   members: I[];
   currentAssignee?: I;
   canDelete: boolean;
+  canPostProgress: boolean;
 }) {
   const router = useRouter(),
     [record, setRecord] = useState(task),
@@ -41,10 +46,18 @@ export function TodoRecord({
     [activity, setActivity] = useState(false),
     [archiveConfirm, setArchiveConfirm] = useState(false),
     [deleteConfirm, setDeleteConfirm] = useState(false),
+    [removeFileConfirm, setRemoveFileConfirm] = useState(false),
+    [completionOpen, setCompletionOpen] = useState(false),
+    [completionSummary, setCompletionSummary] = useState(""),
+    [completing, setCompleting] = useState(false),
+    [uploading, setUploading] = useState(false),
+    [progressText, setProgressText] = useState(""),
+    [postingProgress, setPostingProgress] = useState(false),
     [deleting, setDeleting] = useState(false),
     [assigneeOpen, setAssigneeOpen] = useState(false),
     [memberSearch, setMemberSearch] = useState(""),
     [error, setError] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
   const current = stages.find((s) => s.id === record.stageId),
     done = Boolean(record.completedAt) || Boolean(current?.isDone);
   async function update(body: Record<string, unknown>) {
@@ -66,12 +79,27 @@ export function TodoRecord({
     };
     setRecord(optimistic);
     setError("");
-    const r = await fetch(`/api/companies/${companyId}/tasks/${record.id}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (r.ok) {
+    try {
+      const r = await fetch(`/api/companies/${companyId}/tasks/${record.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        setRecord(previous);
+        setError((await r.json()).error ?? "Could not update To-Do");
+        return false;
+      }
+      const result = await r.json();
+      if (result.completion) {
+        setRecord((currentRecord) => ({
+          ...currentRecord,
+          completionSummary: result.completion.summary,
+          completedById: result.completion.actorId,
+          completedByName: result.completion.actorName,
+          completedAt: result.completion.timestamp,
+        }));
+      }
       const eventType = body.assignedToUserId
         ? "assignee_changed"
         : body.priority
@@ -81,7 +109,9 @@ export function TodoRecord({
             : body.archived
               ? "archived"
               : body.stageId
-                ? "stage_changed"
+                ? body.completionSummary
+                  ? "completed"
+                  : "stage_changed"
                 : "description_changed";
       const nextMember = body.assignedToUserId
         ? members.find((member) => member.id === body.assignedToUserId)
@@ -105,13 +135,88 @@ export function TodoRecord({
               ? body.dueDate
               : undefined,
           timestamp: new Date().toISOString(),
+          completionSummary: body.completionSummary,
+          actorName: result.completion?.actorName,
         },
         ...currentHistory,
       ]);
       if (body.archived) router.push(`/workspace/${companyId}/todo`);
-    } else {
+      return true;
+    } catch {
       setRecord(previous);
-      setError((await r.json()).error);
+      setError("Could not update To-Do. Check your connection and try again.");
+      return false;
+    }
+  }
+  async function completeTask(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const summary = completionSummary.trim();
+    if (!summary) return;
+    const doneStage = stages.find((stage) => stage.isDone);
+    if (!doneStage) {
+      setError("A completed stage is not configured");
+      return;
+    }
+    setCompleting(true);
+    const saved = await update({ stageId: doneStage.id, completionSummary: summary });
+    setCompleting(false);
+    if (saved) {
+      setCompletionOpen(false);
+      setCompletionSummary("");
+    }
+  }
+  async function uploadFile(file?: File) {
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetch(`/api/companies/${companyId}/tasks/${record.id}/file`, {
+        method: "POST",
+        body: form,
+      });
+      const body = await response.json();
+      if (response.ok) {
+        setRecord((currentRecord) => ({ ...currentRecord, attachment: body.attachment }));
+        setTimeline((currentHistory) => [{
+          id: `file-${Date.now()}`,
+          eventType: "file_attached",
+          fileName: body.attachment.name,
+          actorName: body.attachment.createdByName,
+          timestamp: body.attachment.createdAt,
+        }, ...currentHistory]);
+      } else setError(body.error ?? "Could not attach file");
+    } catch {
+      setError("Could not attach file. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+  async function removeFile() {
+    setUploading(true);
+    const fileName = String((record.attachment as I | undefined)?.name ?? "Attachment");
+    try {
+      const response = await fetch(`/api/companies/${companyId}/tasks/${record.id}/file`, { method: "DELETE" });
+      if (response.ok) {
+        setRecord((currentRecord) => {
+          const next = { ...currentRecord };
+          delete next.attachment;
+          return next;
+        });
+        setTimeline((currentHistory) => [{
+          id: `file-${Date.now()}`,
+          eventType: "file_removed",
+          fileName,
+          timestamp: new Date().toISOString(),
+        }, ...currentHistory]);
+      } else setError((await response.json()).error ?? "Could not remove file");
+    } catch {
+      setError("Could not remove file. Check your connection and try again.");
+    } finally {
+      setUploading(false);
+      setRemoveFileConfirm(false);
     }
   }
   async function schedule(e: React.FormEvent<HTMLFormElement>) {
@@ -138,6 +243,33 @@ export function TodoRecord({
         ...currentHistory,
       ]);
     } else setError((await r.json()).error);
+  }
+  async function postProgress(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const content = progressText.trim();
+    if (!content) return;
+    setPostingProgress(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/companies/${companyId}/tasks/${record.id}/updates`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content }),
+        },
+      );
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not save progress update");
+      setTimeline((currentHistory) => [body.update, ...currentHistory]);
+      setProgressText("");
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not save progress update",
+      );
+    } finally {
+      setPostingProgress(false);
+    }
   }
   async function deleteTask() {
     setDeleting(true);
@@ -176,14 +308,11 @@ export function TodoRecord({
         <div className="flex gap-2">
           <button
             className="btn btn-primary"
-            onClick={() =>
-              update({
-                stageId: (done
-                  ? stages.find((s) => !s.isDone)
-                  : stages.find((s) => s.isDone)
-                )?.id,
-              })
-            }
+            onClick={() => {
+              if (done)
+                void update({ stageId: stages.find((stage) => !stage.isDone)?.id });
+              else setCompletionOpen(true);
+            }}
           >
             <CheckCircle2 size={16} />
             {done ? "Reopen" : "Mark Done"}
@@ -221,7 +350,11 @@ export function TodoRecord({
               <select
                 className="input"
                 value={String(record.stageId)}
-                onChange={(e) => update({ stageId: e.target.value })}
+                onChange={(e) => {
+                  const nextStage = stages.find((stage) => stage.id === e.target.value);
+                  if (!done && nextStage?.isDone) setCompletionOpen(true);
+                  else void update({ stageId: e.target.value });
+                }}
               >
                 {stages.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -322,16 +455,107 @@ export function TodoRecord({
               mentions={
                 (record.descriptionMentions as TodoMention[] | undefined) ?? []
               }
-              onCommit={(description, descriptionMentions) =>
-                update({ description, descriptionMentions })
-              }
+              onCommit={async (description, descriptionMentions) => {
+                await update({ description, descriptionMentions });
+              }}
             />
           </div>
+          <div className="mt-6 border-t border-[var(--border)] pt-5">
+            <p className="label">Attachment</p>
+            <input
+              ref={fileInput}
+              type="file"
+              className="hidden"
+              accept=".pdf,.txt,.csv,.png,.jpg,.jpeg,.docx,.xlsx"
+              onChange={(event) => void uploadFile(event.target.files?.[0])}
+            />
+            {record.attachment ? (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[var(--soft)] p-4">
+                <FileText size={20} />
+                <div className="min-w-0 flex-1">
+                  <b className="block truncate">{String((record.attachment as I).name)}</b>
+                  <small className="muted">One attachment maximum</small>
+                </div>
+                <a className="btn btn-secondary" href={`/api/companies/${companyId}/tasks/${record.id}/file`}>
+                  <Download size={16} /> Download
+                </a>
+                <button className="btn btn-secondary" disabled={uploading} onClick={() => fileInput.current?.click()}>
+                  Replace
+                </button>
+                <button className="btn btn-secondary" disabled={uploading} onClick={() => setRemoveFileConfirm(true)}>
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-secondary" disabled={uploading} onClick={() => fileInput.current?.click()}>
+                <Paperclip size={16} /> {uploading ? "Uploading…" : "Attach file"}
+              </button>
+            )}
+            <p className="mt-2 text-xs muted">PDF, text, CSV, JPG, PNG, Word, or Excel. Maximum 4 MB.</p>
+          </div>
+          {done && Boolean(record.completionSummary) && (
+            <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--soft)] p-4">
+              <p className="label">Completion summary</p>
+              <p className="whitespace-pre-wrap">{String(record.completionSummary)}</p>
+              <p className="mt-2 text-xs muted">
+                Completed by {String(record.completedByName ?? "a workspace member")}
+                {record.completedAt ? ` · ${new Date(String(record.completedAt)).toLocaleString()}` : ""}
+              </p>
+            </section>
+          )}
         </main>
         <aside className="panel p-5">
+          <section>
+            <h2 className="font-bold">Progress Updates</h2>
+            <p className="mt-1 text-sm muted">
+              Periodic notes about work completed or currently in progress.
+            </p>
+            {canPostProgress && (
+              <form className="mt-4" onSubmit={postProgress}>
+                <textarea
+                  className="input min-h-24 resize-y"
+                  required
+                  maxLength={2000}
+                  value={progressText}
+                  onChange={(event) => setProgressText(event.target.value)}
+                  placeholder="Share a progress update…"
+                />
+                <button
+                  className="btn btn-primary mt-2 w-full"
+                  disabled={postingProgress || !progressText.trim()}
+                >
+                  {postingProgress ? "Posting…" : "Post Update"}
+                </button>
+              </form>
+            )}
+            {!canPostProgress && (
+              <p className="mt-3 rounded-xl bg-[var(--soft)] p-3 text-sm muted">
+                Only an employee currently assigned to this To-Do can post updates.
+              </p>
+            )}
+            <div className="mt-4 space-y-3">
+              {[...timeline]
+                .filter((item) => item.eventType === "progress_update")
+                .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+                .map((item) => (
+                  <article key={item.id} className="rounded-xl bg-[var(--soft)] p-3">
+                    <p className="whitespace-pre-wrap text-sm">{String(item.content)}</p>
+                    <p className="mt-2 text-xs muted">
+                      {String(item.actorName ?? "Workspace member")}
+                      {item.timestamp ? ` · ${new Date(String(item.timestamp)).toLocaleString()}` : ""}
+                    </p>
+                  </article>
+                ))}
+              {!timeline.some((item) => item.eventType === "progress_update") && (
+                <p className="text-sm muted">No progress updates yet.</p>
+              )}
+            </div>
+          </section>
+          <section className="mt-6 border-t border-[var(--border)] pt-5">
           <h2 className="font-bold">Activity / History</h2>
           <div className="mt-4 space-y-3">
             {[...timeline]
+              .filter((item) => item.eventType !== "progress_update")
               .sort((a, b) =>
                 String(b.timestamp).localeCompare(String(a.timestamp)),
               )
@@ -349,6 +573,12 @@ export function TodoRecord({
                       by {String(h.actorName)}
                     </p>
                   )}
+                  {Boolean(h.completionSummary) && (
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{String(h.completionSummary)}</p>
+                  )}
+                  {Boolean(h.fileName) && (
+                    <p className="mt-1 text-sm">{String(h.fileName)}</p>
+                  )}
                   <p className="mt-1 text-xs muted">
                     {h.timestamp
                       ? new Date(String(h.timestamp)).toLocaleString()
@@ -357,6 +587,7 @@ export function TodoRecord({
                 </article>
               ))}
           </div>
+          </section>
         </aside>
       </div>
       {activity && (
@@ -395,6 +626,48 @@ export function TodoRecord({
           </form>
         </div>
       )}
+      {completionOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !completing) setCompletionOpen(false);
+        }}>
+          <form className="panel w-full max-w-lg p-6" onSubmit={completeTask}>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-extrabold">Mark this To-Do as done?</h2>
+                <p className="mt-1 text-sm muted">Briefly summarize the work you completed. This will appear in Activity / History.</p>
+              </div>
+              <button type="button" disabled={completing} onClick={() => setCompletionOpen(false)}><X /></button>
+            </div>
+            <Field label="Completion summary">
+              <textarea
+                className="input min-h-32 resize-y"
+                autoFocus
+                required
+                maxLength={2000}
+                value={completionSummary}
+                onChange={(event) => setCompletionSummary(event.target.value)}
+                placeholder="What was completed?"
+              />
+            </Field>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="btn btn-secondary" disabled={completing} onClick={() => setCompletionOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" disabled={completing || !completionSummary.trim()}>
+                <CheckCircle2 size={16} /> {completing ? "Saving…" : "Mark as Done"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      <ConfirmDialog
+        open={removeFileConfirm}
+        title="Remove this attachment?"
+        description="The attached file will be permanently removed from this To-Do."
+        confirmLabel="Remove Attachment"
+        destructive
+        busy={uploading}
+        onCancel={() => setRemoveFileConfirm(false)}
+        onConfirm={() => void removeFile()}
+      />
       <ConfirmDialog
         open={archiveConfirm}
         title="Move this To-Do to the archive?"
@@ -457,6 +730,10 @@ function historyTitle(history: I) {
     description_changed: "Description changed",
     activity_scheduled: "Activity scheduled",
     archived: "Task archived",
+    completed: "Task completed",
+    file_attached: "File attached",
+    file_removed: "File removed",
+    progress_update: "Progress update",
   };
   return labels[String(history.eventType)] ?? "Task updated";
 }

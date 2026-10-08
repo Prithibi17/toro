@@ -5,6 +5,7 @@ import { TodoRecord } from "@/components/todo-record";
 import { serializeFirestore } from "@/lib/firestore-serialization";
 import { canAssignTodoTo } from "@/lib/todo-assignment";
 import { can } from "@/lib/can";
+import { canPostTodoProgress } from "@/lib/todo-completion";
 export default async function Page({
   params,
 }: {
@@ -82,6 +83,7 @@ export default async function Page({
             : undefined
       }
       canDelete={can(ctx, "todo.delete", "todo")}
+      canPostProgress={canPostTodoProgress(ctx.user.uid, doc.data()?.assigneeIds)}
     />
   );
 }

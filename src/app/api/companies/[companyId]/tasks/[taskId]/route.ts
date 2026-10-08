@@ -11,6 +11,9 @@ import { appendAudit } from "@/lib/audit";
 import { canAssignTodoTo } from "@/lib/todo-assignment";
 import { crmAllowed } from "@/lib/crm-server";
 import { can } from "@/lib/can";
+import { getApps } from "firebase-admin/app";
+import { getStorage } from "firebase-admin/storage";
+import { normalizeCompletionSummary } from "@/lib/todo-completion";
 const mention = z.object({
   entityType: z.enum(["member", "contact", "company", "tag"]),
   entityId: z.string().min(1).max(128),
@@ -25,6 +28,7 @@ const input = z.object({
   dueDate: z.string().max(30).optional(),
   archived: z.boolean().optional(),
   assignedToUserId: z.string().min(1).max(128).optional(),
+  completionSummary: z.string().trim().min(1).max(2000).optional(),
 });
 export async function PATCH(
   req: Request,
@@ -42,6 +46,8 @@ export async function PATCH(
       db = getAdmin().db,
       ref = db.doc(`companies/${companyId}/tasks/${taskId}`),
       doc = await ref.get();
+    if (data.completionSummary !== undefined)
+      data.completionSummary = normalizeCompletionSummary(data.completionSummary);
     if (!doc.exists)
       return NextResponse.json({ error: "To-Do not found" }, { status: 404 });
     const isAdministrator = ["owner", "admin"].includes(
@@ -95,10 +101,26 @@ export async function PATCH(
     }
     if (stage) {
       update.status = stage.data()?.legacyStatus || "todo";
-      if (stage.data()?.isDone)
+      if (stage.data()?.isDone) {
         update.completedAt = FieldValue.serverTimestamp();
-      else update.completedAt = null;
+        if (data.completionSummary) {
+          update.completionSummary = data.completionSummary;
+          update.completedById = a.access.user.uid;
+          update.completedByName =
+            a.access.user.name ?? a.access.user.email ?? "User";
+        }
+      } else {
+        update.completedAt = null;
+        update.completionSummary = null;
+        update.completedById = null;
+        update.completedByName = null;
+      }
     }
+    if (data.completionSummary && !stage?.data()?.isDone)
+      return NextResponse.json(
+        { error: "A completion summary can only be added when marking the To-Do done" },
+        { status: 400 },
+      );
     if (data.archived !== undefined)
       update.archivedAt = data.archived ? FieldValue.serverTimestamp() : null;
     if (data.descriptionMentions) {
@@ -158,6 +180,7 @@ export async function PATCH(
       to: unknown,
       fromLabel?: string,
       toLabel?: string,
+      details?: Record<string, unknown>,
     ) =>
       batch.create(db.collection(`companies/${companyId}/todoHistory`).doc(), {
         todoId: taskId,
@@ -168,6 +191,7 @@ export async function PATCH(
         to: to ?? null,
         fromLabel: fromLabel ?? null,
         toLabel: toLabel ?? null,
+        ...(details ?? {}),
         timestamp: FieldValue.serverTimestamp(),
       });
     if (data.stageId && data.stageId !== doc.data()?.stageId) {
@@ -178,11 +202,14 @@ export async function PATCH(
               .get()
           : null;
       addHistory(
-        "stage_changed",
+        data.completionSummary ? "completed" : "stage_changed",
         oldStageId,
         data.stageId,
         String(oldStage?.data()?.name ?? "Unknown stage"),
         String(stage?.data()?.name ?? "Unknown stage"),
+        data.completionSummary
+          ? { completionSummary: data.completionSummary }
+          : undefined,
       );
     }
     if (data.priority && data.priority !== doc.data()?.priority)
@@ -280,7 +307,17 @@ export async function PATCH(
       batch,
     );
     await batch.commit();
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      completion: data.completionSummary
+        ? {
+            summary: data.completionSummary,
+            actorId: a.access.user.uid,
+            actorName: a.access.user.name ?? a.access.user.email ?? "User",
+            timestamp: new Date().toISOString(),
+          }
+        : undefined,
+    });
   } catch (e) {
     return NextResponse.json(
       {
@@ -344,6 +381,14 @@ export async function DELETE(
       batch,
     );
     await batch.commit();
+    const attachmentPath = (task.data()?.attachment as { path?: string } | undefined)?.path;
+    const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+    if (attachmentPath && bucketName && getApps().length)
+      await getStorage(getApps()[0])
+        .bucket(bucketName)
+        .file(attachmentPath)
+        .delete({ ignoreNotFound: true })
+        .catch(() => {});
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

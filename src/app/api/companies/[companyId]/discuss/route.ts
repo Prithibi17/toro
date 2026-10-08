@@ -6,6 +6,7 @@ import { getAdmin } from "@/lib/firebase-admin";
 import {
   canAccessConversation,
   canonicalDirectMessageId,
+  isExactDirectMessage,
 } from "@/lib/discuss-access";
 const create = z.discriminatedUnion("kind", [
   z.object({
@@ -77,12 +78,14 @@ export async function GET(
   });
   return NextResponse.json({
     conversations,
-    members: members.docs.map((d) => ({
+    members: members.docs
+      .filter((d) => d.data().userType !== "portal")
+      .map((d) => ({
       id: d.id,
       displayName: String(d.data().displayName || d.data().email || "Member"),
       email: String(d.data().email || ""),
       role: String(d.data().role || "employee"),
-    })),
+      })),
     departments: departments.docs.map((d) => ({
       id: d.id,
       name: String(d.data().name || "Department"),
@@ -110,7 +113,11 @@ export async function POST(
       const target = await db
         .doc(`companies/${companyId}/members/${data.targetUserId}`)
         .get();
-      if (!target.exists || target.data()?.status !== "active")
+      if (
+        !target.exists ||
+        target.data()?.status !== "active" ||
+        target.data()?.userType === "portal"
+      )
         return NextResponse.json(
           { error: "Member not found" },
           { status: 404 },
@@ -118,7 +125,8 @@ export async function POST(
       const ids = [ctx.user.uid, data.targetUserId].sort();
       const id = canonicalDirectMessageId(ctx.user.uid, data.targetUserId);
       const ref = db.doc(`companies/${companyId}/channels/${id}`);
-      if (!(await ref.get()).exists)
+      const existing = await ref.get();
+      if (!existing.exists)
         await ref.create({
           name: "Direct message",
           type: "dm",
@@ -129,6 +137,11 @@ export async function POST(
           lastMessage: "",
           unreadBy: [],
         });
+      else if (!isExactDirectMessage(existing.data()!, ids))
+        return NextResponse.json(
+          { error: "This direct-message record is invalid and must be repaired" },
+          { status: 409 },
+        );
       return NextResponse.json({
         conversation: {
           id,
@@ -147,7 +160,10 @@ export async function POST(
       );
       if (
         memberDocuments.some(
-          (member) => !member.exists || member.data()?.status !== "active",
+          (member) =>
+            !member.exists ||
+            member.data()?.status !== "active" ||
+            member.data()?.userType === "portal",
         )
       )
         return NextResponse.json(

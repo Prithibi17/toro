@@ -3,6 +3,7 @@ import {
   canAccessConversation,
   canonicalDirectMessageId,
   messageMentions,
+  isExactDirectMessage,
 } from "./discuss-access";
 import type { Membership } from "./types";
 
@@ -27,6 +28,29 @@ describe("Discuss access", () => {
         type: "private",
         memberIds: ["other"],
       }),
+    ).toBe(false);
+  });
+  it("keeps a two-person direct message private from every third user", () => {
+    const directMessage = { type: "dm", memberIds: ["alice", "bob"] };
+    expect(canAccessConversation("alice", member(), directMessage)).toBe(true);
+    expect(canAccessConversation("bob", member(), directMessage)).toBe(true);
+    expect(canAccessConversation("third", member(), directMessage)).toBe(false);
+    expect(
+      canAccessConversation("admin", member({ role: "admin" }), directMessage),
+    ).toBe(false);
+  });
+  it("recognizes only an exact canonical two-member DM", () => {
+    expect(
+      isExactDirectMessage(
+        { type: "dm", memberIds: ["bob", "alice"] },
+        ["alice", "bob"],
+      ),
+    ).toBe(true);
+    expect(
+      isExactDirectMessage(
+        { type: "dm", memberIds: ["alice", "bob", "third"] },
+        ["alice", "bob"],
+      ),
     ).toBe(false);
   });
   it("denies portal users and permits matching department members", () => {

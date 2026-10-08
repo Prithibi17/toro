@@ -67,12 +67,14 @@ export default async function Page({
         ctx.membership.actionPermissions?.["discuss.channel.manage"] === true
       }
       initialConversations={conversations}
-      members={members.docs.map((d) => ({
+      members={members.docs
+        .filter((d) => d.data().userType !== "portal")
+        .map((d) => ({
         id: d.id,
         displayName: String(d.data().displayName || d.data().email || "Member"),
         email: String(d.data().email || ""),
         role: String(d.data().role || "employee"),
-      }))}
+        }))}
       departments={departments.docs.map((d) => ({
         id: d.id,
         name: String(d.data().name || "Department"),
