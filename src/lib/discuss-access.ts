@@ -39,6 +39,11 @@ export function isExactDirectMessage(
     actual.every((id, index) => id === expected[index]);
 }
 
+export function canManageConversationMembers(role: string, type: string) {
+  return ["owner", "admin"].includes(role) &&
+    ["group", "private", "project"].includes(type);
+}
+
 export function messageMentions(body: string) {
   return Array.from(
     new Set(

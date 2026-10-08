@@ -63,8 +63,7 @@ export default async function Page({
       companyId={companyId}
       userId={ctx.user.uid}
       isAdmin={
-        ctx.membership.role === "owner" ||
-        ctx.membership.actionPermissions?.["discuss.channel.manage"] === true
+        ctx.membership.role === "owner" || ctx.membership.role === "admin"
       }
       initialConversations={conversations}
       members={members.docs

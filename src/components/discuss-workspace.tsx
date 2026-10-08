@@ -22,6 +22,8 @@ import {
   Smile,
   Star,
   CheckSquare2,
+  UserMinus,
+  UserPlus,
   X,
 } from "lucide-react";
 import { clientDb, clientStorage } from "@/lib/firebase-client";
@@ -98,11 +100,53 @@ export function DiscussWorkspace({
   const [listenerError, setListenerError] = useState("");
   const [mobileChat, setMobileChat] = useState(false);
   const [details, setDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState("");
+  const [memberBusy, setMemberBusy] = useState("");
+  const [addMemberId, setAddMemberId] = useState("");
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [composerEmojis, setComposerEmojis] = useState(false);
   const nonce = useRef(crypto.randomUUID());
   const bottom = useRef<HTMLDivElement>(null);
   const active = conversations.find((c) => c.id === selected);
+  const canManageActiveMembers = Boolean(
+    isAdmin &&
+      active &&
+      ["group", "private", "project"].includes(active.type),
+  );
+  async function manageMember(action: "add" | "remove", memberId: string) {
+    if (!active || !memberId) return;
+    setMemberBusy(memberId);
+    setDetailsError("");
+    try {
+      const response = await fetch(
+        `/api/companies/${companyId}/discuss/${active.id}/members`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action, userId: memberId }),
+        },
+      );
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error ?? "Could not update conversation members");
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === active.id
+            ? { ...conversation, memberIds: body.memberIds }
+            : conversation,
+        ),
+      );
+      setAddMemberId("");
+    } catch (cause) {
+      setDetailsError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not update conversation members",
+      );
+    } finally {
+      setMemberBusy("");
+    }
+  }
   useEffect(() => {
     if (!selected || !clientDb) return;
     const q = query(
@@ -477,13 +521,15 @@ export function DiscussWorkspace({
                   title={conversationName(active, members, userId)}
                   type="video"
                 />
-                <button
-                  className="btn btn-secondary !p-2.5"
-                  title="Conversation info"
-                  onClick={() => setDetails((value) => !value)}
-                >
-                  <Info size={17} />
-                </button>
+                {isAdmin && (
+                  <button
+                    className="btn btn-secondary !p-2.5"
+                    title="Conversation info and member management"
+                    onClick={() => setDetails((value) => !value)}
+                  >
+                    <Info size={17} />
+                  </button>
+                )}
               </div>
             </header>
             <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-8">
@@ -638,19 +684,72 @@ export function DiscussWorkspace({
           <h4 className="mt-6 text-xs font-bold uppercase tracking-wider muted">
             Members
           </h4>
+          {detailsError && (
+            <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-xs text-red-600">
+              {detailsError}
+            </p>
+          )}
+          {canManageActiveMembers && (
+            <div className="mt-2 flex gap-2">
+              <select
+                className="input min-w-0 flex-1 !py-2 text-sm"
+                value={addMemberId}
+                onChange={(event) => setAddMemberId(event.target.value)}
+              >
+                <option value="">Add a member…</option>
+                {members
+                  .filter((member) => !active.memberIds?.includes(member.id))
+                  .map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.displayName}
+                    </option>
+                  ))}
+              </select>
+              <button
+                className="btn btn-primary !p-2.5"
+                title="Add member"
+                disabled={!addMemberId || Boolean(memberBusy)}
+                onClick={() => void manageMember("add", addMemberId)}
+              >
+                <UserPlus size={16} />
+              </button>
+            </div>
+          )}
           <div className="mt-2 space-y-2">
             {(active.memberIds || []).map((id) => {
               const member = members.find((candidate) => candidate.id === id);
               return (
                 <div
                   key={id}
-                  className="rounded-lg bg-[var(--soft)] px-3 py-2 text-sm"
+                  className="flex items-center gap-2 rounded-lg bg-[var(--soft)] px-3 py-2 text-sm"
                 >
-                  {member?.displayName || "Former user"}
+                  <span className="min-w-0 flex-1 truncate">
+                    {member?.displayName || "Former user"}
+                  </span>
+                  {canManageActiveMembers &&
+                    (active.memberIds?.length ?? 0) > 2 && (
+                      <button
+                        className="rounded p-1 text-red-600 hover:bg-red-500/10"
+                        title={`Remove ${member?.displayName ?? "member"}`}
+                        disabled={Boolean(memberBusy)}
+                        onClick={() => void manageMember("remove", id)}
+                      >
+                        {memberBusy === id ? (
+                          <LoaderCircle className="animate-spin" size={15} />
+                        ) : (
+                          <UserMinus size={15} />
+                        )}
+                      </button>
+                    )}
                 </div>
               );
             })}
           </div>
+          {isAdmin && active.type === "dm" && (
+            <p className="mt-3 text-xs muted">
+              One-to-one direct messages always remain between their original two members.
+            </p>
+          )}
           <h4 className="mt-6 text-xs font-bold uppercase tracking-wider muted">
             Pinned messages
           </h4>

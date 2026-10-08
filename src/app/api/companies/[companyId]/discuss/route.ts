@@ -188,7 +188,7 @@ export async function POST(
       );
     }
     if (
-      ctx.membership.role !== "owner" &&
+      !["owner", "admin"].includes(ctx.membership.role) &&
       ctx.membership.actionPermissions?.["discuss.channel.manage"] !== true
     )
       return NextResponse.json(

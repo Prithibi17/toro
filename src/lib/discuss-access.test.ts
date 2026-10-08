@@ -4,6 +4,7 @@ import {
   canonicalDirectMessageId,
   messageMentions,
   isExactDirectMessage,
+  canManageConversationMembers,
 } from "./discuss-access";
 import type { Membership } from "./types";
 
@@ -52,6 +53,13 @@ describe("Discuss access", () => {
         ["alice", "bob"],
       ),
     ).toBe(false);
+  });
+  it("limits group membership management to owners and admins", () => {
+    expect(canManageConversationMembers("owner", "group")).toBe(true);
+    expect(canManageConversationMembers("admin", "private")).toBe(true);
+    expect(canManageConversationMembers("manager", "group")).toBe(false);
+    expect(canManageConversationMembers("admin", "dm")).toBe(false);
+    expect(canManageConversationMembers("owner", "public")).toBe(false);
   });
   it("denies portal users and permits matching department members", () => {
     expect(
