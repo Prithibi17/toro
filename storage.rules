@@ -10,8 +10,17 @@ service firebase.storage {
         && (
           !channel.data.keys().hasAny(['type'])
           || channel.data.type == 'public'
-          || request.auth.uid in channel.data.memberIds
-          || (channel.data.type == 'department' && channel.data.departmentId in firestore.get(/databases/(default)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.departmentIds)
+          || (
+            channel.data.type in ['dm', 'group', 'private', 'project']
+            && channel.data.keys().hasAny(['memberIds'])
+            && request.auth.uid in channel.data.memberIds
+          )
+          || (
+            channel.data.type == 'department'
+            && channel.data.keys().hasAny(['departmentId'])
+            && firestore.get(/databases/(default)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.keys().hasAny(['departmentIds'])
+            && channel.data.departmentId in firestore.get(/databases/(default)/documents/companies/$(companyId)/members/$(request.auth.uid)).data.departmentIds
+          )
         );
     }
     function safeContentType() { return request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('application/pdf') || request.resource.contentType.matches('text/plain') || request.resource.contentType.matches('text/csv') || request.resource.contentType.matches('application/(msword|vnd.openxmlformats-officedocument.*)'); }
