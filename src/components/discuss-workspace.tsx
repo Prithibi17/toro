@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   limit,
@@ -30,6 +30,7 @@ import { clientDb, clientStorage } from "@/lib/firebase-client";
 import { CallLauncher } from "./call-launcher";
 import { ActiveMeetingCard } from "./active-meeting-card";
 import { WorkspaceEntityInput } from "./workspace-entity-input";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 type Conversation = {
   id: string;
   name: string;
@@ -1023,8 +1024,11 @@ function EmojiPicker({
   close: () => void;
   className: string;
 }) {
+  const container = useRef<HTMLDivElement>(null);
+  const dismiss = useCallback(close, [close]);
+  useOutsideDismiss(container, true, dismiss);
   return (
-    <div className={`absolute z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-3 shadow-2xl ${className}`}>
+    <div ref={container} className={`absolute z-50 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--border)] bg-[var(--panel)] p-3 shadow-2xl ${className}`}>
       <div className="mb-2 flex items-center justify-between">
         <b className="text-sm">Choose an emoji</b>
         <button type="button" onClick={close} className="rounded p-1 hover:bg-[var(--soft)]"><X size={15} /></button>

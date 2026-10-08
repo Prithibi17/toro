@@ -1,6 +1,7 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 export type SharedTag = { id: string; name?: string; active?: boolean };
 export function TagSelector({
   companyId,
@@ -19,6 +20,9 @@ export function TagSelector({
     [query, setQuery] = useState(""),
     [items, setItems] = useState(tags),
     [busy, setBusy] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const dismiss = useCallback(() => setOpen(false), []);
+  useOutsideDismiss(container, open, dismiss);
   const selected = value.map(
       (id) => items.find((tag) => tag.id === id) ?? { id, name: id },
     ),
@@ -64,7 +68,7 @@ export function TagSelector({
     }
   }
   return (
-    <div className="relative">
+    <div ref={container} className="relative">
       <button
         type="button"
         className="input flex min-h-11 flex-wrap items-center gap-1 text-left"

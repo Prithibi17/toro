@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Building2, Hash, UserRound } from "lucide-react";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 
 export type TodoMention = {
   entityType: "member" | "contact" | "company" | "tag";
@@ -40,6 +41,7 @@ export function TodoDescriptionEditor({
   onCommit: (description: string, references: TodoMention[]) => Promise<void>;
 }) {
   const editor = useRef<HTMLDivElement>(null);
+  const container = useRef<HTMLDivElement>(null);
   const queryRange = useRef<Range | null>(null);
   const [groups, setGroups] = useState<Groups>(emptyGroups);
   const [open, setOpen] = useState(false);
@@ -47,6 +49,8 @@ export function TodoDescriptionEditor({
   const [saving, setSaving] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ left: 12, top: 48 });
   const suggestions = Object.values(groups).flat();
+  const dismiss = useCallback(() => setOpen(false), []);
+  useOutsideDismiss(container, open, dismiss);
 
   useEffect(() => {
     const root = editor.current;
@@ -206,7 +210,7 @@ export function TodoDescriptionEditor({
 
   let suggestionIndex = 0;
   return (
-    <div className="relative">
+    <div ref={container} className="relative">
       <div
         ref={editor}
         className="input min-h-48 whitespace-pre-wrap leading-7"

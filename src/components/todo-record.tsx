@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ArrowLeft,
   Archive,
@@ -20,6 +20,7 @@ import {
   type TodoMention,
 } from "./todo-description-editor";
 import { ConfirmDialog } from "./confirm-dialog";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 type I = Record<string, unknown> & { id: string };
 export function TodoRecord({
   companyId,
@@ -58,6 +59,12 @@ export function TodoRecord({
     [memberSearch, setMemberSearch] = useState(""),
     [error, setError] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const assigneeMenu = useRef<HTMLDivElement>(null);
+  const closeAssignee = useCallback(() => {
+    setAssigneeOpen(false);
+    setMemberSearch("");
+  }, []);
+  useOutsideDismiss(assigneeMenu, assigneeOpen, closeAssignee);
   const current = stages.find((s) => s.id === record.stageId),
     done = Boolean(record.completedAt) || Boolean(current?.isDone);
   async function update(body: Record<string, unknown>) {
@@ -384,7 +391,7 @@ export function TodoRecord({
                 onChange={(e) => update({ dueDate: e.target.value })}
               />
             </Field>
-            <div className="relative">
+            <div ref={assigneeMenu} className="relative">
               <span className="label">Assignee</span>
               <button
                 type="button"

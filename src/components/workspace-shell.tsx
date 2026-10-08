@@ -32,6 +32,8 @@ import { ThemeToggle } from "./theme-toggle";
 import { NotificationCenter } from "./notification-menu";
 import { WorkspaceSearch } from "./workspace-search";
 import { AttendanceHeartbeat } from "./attendance-heartbeat";
+import { IdFinderCardModal } from "./id-finder-card-modal";
+import type { IdFinderConnection } from "@/lib/id-finder";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { auth } from "@/lib/firebase-client";
 const glyphs: Record<ModuleKey, ComponentType<{ size?: number }>> = {
@@ -55,6 +57,7 @@ export function WorkspaceShell({
   companyName,
   accountId,
   accountName,
+  accountIdFinder,
   role,
   modules,
   canManageMembers,
@@ -65,6 +68,7 @@ export function WorkspaceShell({
   companyName: string;
   accountId: string;
   accountName: string;
+  accountIdFinder?: IdFinderConnection;
   role: string;
   modules: ModuleKey[];
   canManageMembers: boolean;
@@ -73,6 +77,7 @@ export function WorkspaceShell({
 }) {
   const [open, setOpen] = useState(false);
   const [companyMenu, setCompanyMenu] = useState(false);
+  const [accountCard, setAccountCard] = useState(false);
   const companyMenuRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   const base = `/workspace/${companyId}`;
@@ -241,14 +246,17 @@ export function WorkspaceShell({
           <div className="ml-auto flex gap-2">
             <ThemeToggle />
             <NotificationCenter companyId={companyId} />
-            <span
-              className="grid h-10 w-10 place-items-center rounded-full font-bold text-white"
+            <button
+              type="button"
+              className="grid h-10 w-10 place-items-center rounded-full font-bold text-white transition hover:ring-2 hover:ring-[var(--accent)] hover:ring-offset-2 hover:ring-offset-[var(--bg)] disabled:cursor-default disabled:hover:ring-0"
               style={{ backgroundColor: `hsl(${accountHue} 68% 46%)` }}
-              title={accountName}
+              title={accountIdFinder ? `Open ${accountName}'s ID card` : accountName}
               aria-label={`Signed in as ${accountName}`}
+              disabled={!accountIdFinder}
+              onClick={() => setAccountCard(true)}
             >
               {accountName.trim()[0]?.toUpperCase() || "U"}
-            </span>
+            </button>
           </div>
         </header>
         <main className="p-4 sm:p-7 lg:p-10">{children}</main>
@@ -258,6 +266,12 @@ export function WorkspaceShell({
           aria-label="Close menu"
           onClick={() => setOpen(false)}
           className="fixed inset-0 z-30 bg-black/50 md:hidden"
+        />
+      )}
+      {accountCard && accountIdFinder && (
+        <IdFinderCardModal
+          connection={accountIdFinder}
+          close={() => setAccountCard(false)}
         />
       )}
     </div>

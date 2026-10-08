@@ -42,6 +42,7 @@ export default async function Layout({
       companyName={m.companyName || "Company"}
       accountId={account.uid}
       accountName={account.name || account.email || "User"}
+      accountIdFinder={m.idFinderConnection}
       role={m.role || "member"}
       modules={modules}
       canManageMembers={canManageMembers}

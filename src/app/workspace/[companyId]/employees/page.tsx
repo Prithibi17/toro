@@ -58,6 +58,7 @@ export default async function Page({
         status: d.data().status,
         departmentIds: d.data().departmentIds ?? [],
         jobTitle: d.data().jobTitle ?? d.data().employmentType,
+        idFinderConnection: d.data().idFinderConnection,
       }))}
       departments={departments.docs.map((d) => ({
         id: d.id,

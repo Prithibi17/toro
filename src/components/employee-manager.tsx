@@ -1,7 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
+  BadgeCheck,
   CirclePlus,
+  IdCard,
+  Link2,
   Mail,
   MoreVertical,
   Search,
@@ -13,6 +16,10 @@ import {
 import type { PermissionKey } from "@/lib/types";
 import { ConfirmDialog } from "./confirm-dialog";
 import { DepartmentManager } from "./department-manager";
+import { IdFinderCardModal } from "./id-finder-card-modal";
+import { IdFinderConnector } from "./id-finder-connector";
+import type { IdFinderConnection } from "@/lib/id-finder";
+import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
 type Member = {
   id: string;
   displayName?: string;
@@ -21,6 +28,7 @@ type Member = {
   status: string;
   departmentIds?: string[];
   jobTitle?: string;
+  idFinderConnection?: IdFinderConnection;
 };
 type Department = { id: string; name: string; workDays?: number[] };
 type CompanyRole = { id: string; name: string; description?: string };
@@ -106,7 +114,8 @@ export function EmployeeManager({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [menu, setMenu] = useState<string | null>(null);
+  const [connector, setConnector] = useState<Member | null>(null);
+  const [card, setCard] = useState<IdFinderConnection | null>(null);
   const [statusFilter, setStatusFilter] = useState("active");
   const [invitationToCancel, setInvitationToCancel] =
     useState<Invitation | null>(null);
@@ -123,7 +132,6 @@ export function EmployeeManager({
     [replacement, setReplacement] = useState(""),
     [memberSearch, setMemberSearch] = useState("");
   async function openRemoval(member: Member) {
-    setMenu(null);
     setBusy(true);
     setError("");
     const response = await fetch(
@@ -314,7 +322,7 @@ export function EmployeeManager({
           ))}
         </div>
       )}
-      <div className="panel mt-6 overflow-hidden">
+      <div className="panel mt-6 overflow-visible">
         <div className="grid grid-cols-[1.4fr_1fr_.7fr_.35fr] border-b border-[var(--border)] px-5 py-3 text-xs font-bold uppercase tracking-wider muted">
           <span>Employee</span>
           <span>Role</span>
@@ -331,48 +339,57 @@ export function EmployeeManager({
               key={m.id}
               className="grid grid-cols-[1.4fr_1fr_.7fr_.35fr] items-center border-b border-[var(--border)] px-5 py-4 last:border-0"
             >
-              <div>
-                <b>{m.displayName || m.email || "Unnamed member"}</b>
-                <p className="mt-1 text-sm muted">{m.email}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  type="button"
+                  disabled={!m.idFinderConnection}
+                  onClick={() => m.idFinderConnection && setCard(m.idFinderConnection)}
+                  className="relative grid h-10 w-10 shrink-0 place-items-center rounded-full font-bold text-white disabled:cursor-default"
+                  style={{ backgroundColor: avatarColor(m.id) }}
+                  title={m.idFinderConnection ? "Open connected ID card" : "No ID Finder card connected"}
+                >
+                  {(m.displayName || m.email || "U")[0]?.toUpperCase()}
+                  {m.idFinderConnection && (
+                    <BadgeCheck className="absolute -bottom-1 -right-1 rounded-full bg-[var(--panel)] text-emerald-500" size={16} />
+                  )}
+                </button>
+                <div className="min-w-0">
+                  <b className="block truncate">{m.displayName || m.email || "Unnamed member"}</b>
+                  <p className="mt-1 truncate text-sm muted">{m.email}</p>
+                </div>
               </div>
               <span className="capitalize">{m.role}</span>
               <span className="capitalize text-emerald-500">{m.status}</span>
-              <div className="relative justify-self-end">
-                <button
-                  className="rounded-lg p-2 hover:bg-[var(--soft)]"
-                  aria-label={`Actions for ${m.displayName ?? m.email}`}
-                  onClick={() => setMenu(menu === m.id ? null : m.id)}
-                >
-                  <MoreVertical size={18} />
-                </button>
-                {menu === m.id && (
-                  <div className="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl">
-                    {m.role !== "owner" && (
-                      <a
-                        className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--soft)]"
-                        href={`/workspace/${companyId}/employees/${m.id}/access`}
-                      >
-                        Manage access
-                      </a>
-                    )}
-                    {m.status === "active" && m.role !== "owner" && (
-                      <>
-                        <div className="my-1 border-t border-[var(--border)]" />
-                        <button
-                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-500 hover:bg-red-500/10"
-                          onClick={() => void openRemoval(m)}
-                        >
-                          <Trash2 size={15} />
-                          Remove from Workspace
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+              <EmployeeActions
+                companyId={companyId}
+                member={m}
+                connect={() => setConnector(m)}
+                remove={() => void openRemoval(m)}
+              />
             </div>
           ))}
       </div>
+      {connector && (
+        <IdFinderConnector
+          companyId={companyId}
+          userId={connector.id}
+          memberName={connector.displayName || connector.email || "this employee"}
+          current={connector.idFinderConnection}
+          close={() => setConnector(null)}
+          changed={(connection) => {
+            setMembers((current) =>
+              current.map((member) =>
+                member.id === connector.id
+                  ? { ...member, idFinderConnection: connection }
+                  : member,
+              ),
+            );
+          }}
+        />
+      )}
+      {card && (
+        <IdFinderCardModal connection={card} close={() => setCard(null)} />
+      )}
       {removal && (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4">
           <section className="panel my-6 w-full max-w-xl p-6">
@@ -646,6 +663,85 @@ export function EmployeeManager({
     </>
   );
 }
+
+function avatarColor(id: string) {
+  const hue = Array.from(id).reduce(
+    (hash, character) => (hash * 31 + character.charCodeAt(0)) % 360,
+    0,
+  );
+  return `hsl(${hue} 64% 43%)`;
+}
+
+function EmployeeActions({
+  companyId,
+  member,
+  connect,
+  remove,
+}: {
+  companyId: string;
+  member: Member;
+  connect: () => void;
+  remove: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const dismiss = useCallback(() => setOpen(false), []);
+  useOutsideDismiss(container, open, dismiss);
+  return (
+    <div ref={container} className="relative justify-self-end">
+      <button
+        className="rounded-lg p-2 hover:bg-[var(--soft)]"
+        aria-label={`Actions for ${member.displayName ?? member.email}`}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <MoreVertical size={18} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 z-50 mb-1 w-64 rounded-xl border border-[var(--border)] bg-[var(--panel)] p-2 shadow-xl">
+          {member.role !== "owner" && (
+            <a
+              className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--soft)]"
+              href={`/workspace/${companyId}/employees/${member.id}/access`}
+            >
+              Manage access
+            </a>
+          )}
+          {member.status === "active" && (
+            <button
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--soft)]"
+              onClick={() => {
+                setOpen(false);
+                connect();
+              }}
+            >
+              {member.idFinderConnection ? <IdCard size={15} /> : <Link2 size={15} />}
+              {member.idFinderConnection
+                ? "Manage ID Finder connection"
+                : "Connect with ID Finder"}
+            </button>
+          )}
+          {member.status === "active" && member.role !== "owner" && (
+            <>
+              <div className="my-1 border-t border-[var(--border)]" />
+              <button
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-red-500 hover:bg-red-500/10"
+                onClick={() => {
+                  setOpen(false);
+                  remove();
+                }}
+              >
+                <Trash2 size={15} />
+                Remove from Workspace
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CrmScope({ name, label }: { name: string; label: string }) {
   return (
     <label>

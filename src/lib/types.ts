@@ -96,6 +96,21 @@ export type Membership = {
   departmentIds?: string[];
   permissions?: Partial<Record<PermissionKey, boolean>>;
   crmPermissions?: CrmPermissionSet;
+  idFinderConnection?: {
+    id: string;
+    identifier: string;
+    fullName: string;
+    personType?: string;
+    designation?: string;
+    department?: string;
+    status?: string;
+    avatarUrl?: string | null;
+    companyEmail?: string | null;
+    workLocation?: string | null;
+    cardNumber?: string;
+    connectedAt?: string;
+    connectedBy?: string;
+  };
   /** Human-facing CAN/CANNOT exceptions keyed by Toro's stable permission catalog. */
   permissionOverrides?: Record<string, "allow" | "deny">;
   /** Resolved from active company sales teams by server authorization. */
