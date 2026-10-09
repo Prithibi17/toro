@@ -184,7 +184,7 @@ export function TodoRecord({
         method: "POST",
         body: form,
       });
-      const body = await response.json();
+      const body = await response.json().catch(() => ({ error: "Could not attach file" }));
       if (response.ok) {
         setRecord((currentRecord) => ({ ...currentRecord, attachment: body.attachment }));
         setTimeline((currentHistory) => [{

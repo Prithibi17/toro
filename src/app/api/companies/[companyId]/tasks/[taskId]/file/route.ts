@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
 import { getApps } from "firebase-admin/app";
+import { FieldValue } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { getAdmin } from "@/lib/firebase-admin";
 import {
@@ -8,7 +8,9 @@ import {
   authorizationStatus,
   canReadTask,
 } from "@/lib/authorization";
-import { todoAttachmentError } from "@/lib/todo-completion";
+import { splitTodoAttachmentBytes, todoAttachmentError } from "@/lib/todo-completion";
+
+const CHUNKS_COLLECTION = "attachmentChunks";
 
 async function context(companyId: string, taskId: string, edit = false) {
   const auth = await authorizeCompany(companyId, { module: "todo" });
@@ -36,42 +38,43 @@ export async function POST(req: Request, { params }: { params: Promise<{ company
     return NextResponse.json({ error: "Select one file up to 4 MB" }, { status: 400 });
   const fileError = todoAttachmentError(file);
   if (fileError) return NextResponse.json({ error: fileError }, { status: 400 });
-  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-  if (!bucketName)
-    return NextResponse.json({ error: "File storage is not configured" }, { status: 503 });
   const id = crypto.randomUUID();
-  const path = `companies/${companyId}/files/todo/${taskId}/${id}`;
-  const bucket = getStorage(getApps()[0]).bucket(bucketName);
-  const stored = bucket.file(path);
-  await stored.save(Buffer.from(await file.arrayBuffer()), { contentType: file.type, resumable: false });
+  const chunks = splitTodoAttachmentBytes(new Uint8Array(await file.arrayBuffer()));
   const attachment = {
     id,
     name: file.name.slice(0, 200),
-    path,
+    storage: "firestore" as const,
+    chunkCount: chunks.length,
     size: file.size,
     contentType: file.type,
     createdBy: ctx.auth.user.uid,
     createdByName: ctx.auth.user.name ?? ctx.auth.user.email ?? "User",
     createdAt: new Date().toISOString(),
   };
-  try {
-    const batch = getAdmin().db.batch();
-    batch.update(ctx.ref, { attachment, updatedAt: FieldValue.serverTimestamp() });
-    batch.create(getAdmin().db.collection(`companies/${companyId}/todoHistory`).doc(), {
-      todoId: taskId,
-      actorId: ctx.auth.user.uid,
-      actorName: attachment.createdByName,
-      eventType: "file_attached",
-      fileName: attachment.name,
-      timestamp: FieldValue.serverTimestamp(),
-    });
-    await batch.commit();
-  } catch (error) {
-    await stored.delete().catch(() => {});
-    throw error;
-  }
   const previousPath = (ctx.data.attachment as { path?: string } | undefined)?.path;
-  if (previousPath && previousPath !== path) await bucket.file(previousPath).delete({ ignoreNotFound: true }).catch(() => {});
+  const previousChunks = await ctx.ref.collection(CHUNKS_COLLECTION).get();
+  const batch = getAdmin().db.batch();
+  previousChunks.docs.forEach((document) => batch.delete(document.ref));
+  chunks.forEach((chunk, index) =>
+    batch.set(ctx.ref.collection(CHUNKS_COLLECTION).doc(String(index).padStart(4, "0")), {
+      attachmentId: id,
+      index,
+      data: Buffer.from(chunk),
+    }),
+  );
+  batch.update(ctx.ref, { attachment, updatedAt: FieldValue.serverTimestamp() });
+  batch.create(getAdmin().db.collection(`companies/${companyId}/todoHistory`).doc(), {
+    todoId: taskId,
+    actorId: ctx.auth.user.uid,
+    actorName: attachment.createdByName,
+    eventType: "file_attached",
+    fileName: attachment.name,
+    timestamp: FieldValue.serverTimestamp(),
+  });
+  await batch.commit();
+  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  if (previousPath && bucketName && getApps().length)
+    await getStorage(getApps()[0]).bucket(bucketName).file(previousPath).delete({ ignoreNotFound: true }).catch(() => {});
   return NextResponse.json({ attachment }, { status: 201 });
 }
 
@@ -79,11 +82,25 @@ export async function GET(_: Request, { params }: { params: Promise<{ companyId:
   const { companyId, taskId } = await params;
   const ctx = await context(companyId, taskId);
   if ("response" in ctx) return ctx.response;
-  const attachment = ctx.data.attachment as { name?: string; path?: string; contentType?: string } | undefined;
-  if (!attachment?.path) return NextResponse.json({ error: "File not found" }, { status: 404 });
-  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-  if (!bucketName) return NextResponse.json({ error: "File storage is not configured" }, { status: 503 });
-  const [buffer] = await getStorage(getApps()[0]).bucket(bucketName).file(attachment.path).download();
+  const attachment = ctx.data.attachment as { name?: string; path?: string; contentType?: string; storage?: string; chunkCount?: number } | undefined;
+  if (!attachment) return NextResponse.json({ error: "File not found" }, { status: 404 });
+  if (attachment.path) {
+    const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+    if (!bucketName) return NextResponse.json({ error: "Legacy attachment storage is unavailable" }, { status: 503 });
+    const [legacyBuffer] = await getStorage(getApps()[0]).bucket(bucketName).file(attachment.path).download();
+    return attachmentResponse(legacyBuffer, attachment);
+  }
+  const snapshot = await ctx.ref.collection(CHUNKS_COLLECTION).orderBy("index").get();
+  if (snapshot.empty || snapshot.size !== attachment.chunkCount)
+    return NextResponse.json({ error: "Attachment data is unavailable" }, { status: 404 });
+  const buffer = Buffer.concat(snapshot.docs.map((document) => {
+    const value = document.data().data;
+    return Buffer.isBuffer(value) ? value : Buffer.from(value.toUint8Array());
+  }));
+  return attachmentResponse(buffer, attachment);
+}
+
+function attachmentResponse(buffer: Uint8Array, attachment: { name?: string; contentType?: string }) {
   return new Response(new Uint8Array(buffer), { headers: {
     "Content-Type": attachment.contentType ?? "application/octet-stream",
     "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(attachment.name ?? "attachment")}`,
@@ -97,10 +114,10 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ company
   const ctx = await context(companyId, taskId, true);
   if ("response" in ctx) return ctx.response;
   const attachment = ctx.data.attachment as { name?: string; path?: string } | undefined;
-  if (!attachment?.path) return NextResponse.json({ ok: true });
-  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-  if (!bucketName) return NextResponse.json({ error: "File storage is not configured" }, { status: 503 });
+  if (!attachment) return NextResponse.json({ ok: true });
+  const chunks = await ctx.ref.collection(CHUNKS_COLLECTION).get();
   const batch = getAdmin().db.batch();
+  chunks.docs.forEach((document) => batch.delete(document.ref));
   batch.update(ctx.ref, { attachment: FieldValue.delete(), updatedAt: FieldValue.serverTimestamp() });
   batch.create(getAdmin().db.collection(`companies/${companyId}/todoHistory`).doc(), {
     todoId: taskId,
@@ -111,6 +128,8 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ company
     timestamp: FieldValue.serverTimestamp(),
   });
   await batch.commit();
-  await getStorage(getApps()[0]).bucket(bucketName).file(attachment.path).delete({ ignoreNotFound: true }).catch(() => {});
+  const bucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  if (attachment.path && bucketName && getApps().length)
+    await getStorage(getApps()[0]).bucket(bucketName).file(attachment.path).delete({ ignoreNotFound: true }).catch(() => {});
   return NextResponse.json({ ok: true });
 }

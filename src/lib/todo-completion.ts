@@ -1,4 +1,5 @@
 export const TODO_ATTACHMENT_MAX_BYTES = 4 * 1024 * 1024;
+export const TODO_ATTACHMENT_CHUNK_BYTES = 700 * 1024;
 export const TODO_ATTACHMENT_TYPES = new Set([
   "application/pdf",
   "text/plain",
@@ -21,6 +22,13 @@ export function todoAttachmentError(file: { size: number; type: string }) {
     return "Select one file up to 4 MB";
   if (!TODO_ATTACHMENT_TYPES.has(file.type)) return "Unsupported file type";
   return null;
+}
+
+export function splitTodoAttachmentBytes(bytes: Uint8Array) {
+  const chunks: Uint8Array[] = [];
+  for (let offset = 0; offset < bytes.byteLength; offset += TODO_ATTACHMENT_CHUNK_BYTES)
+    chunks.push(bytes.slice(offset, offset + TODO_ATTACHMENT_CHUNK_BYTES));
+  return chunks;
 }
 
 export function canPostTodoProgress(userId: string, assigneeIds: unknown) {

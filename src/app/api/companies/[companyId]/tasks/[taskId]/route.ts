@@ -354,7 +354,7 @@ export async function DELETE(
     const task = await ref.get();
     if (!task.exists)
       return NextResponse.json({ error: "To-Do not found" }, { status: 404 });
-    const [history, activities] = await Promise.all([
+    const [history, activities, attachmentChunks] = await Promise.all([
       db
         .collection(`companies/${companyId}/todoHistory`)
         .where("todoId", "==", taskId)
@@ -365,12 +365,14 @@ export async function DELETE(
         .where("relatedId", "==", taskId)
         .limit(150)
         .get(),
+      ref.collection("attachmentChunks").get(),
     ]);
     const batch = db.batch();
     history.docs.forEach((document) => batch.delete(document.ref));
     activities.docs
       .filter((document) => document.data().relatedType === "task")
       .forEach((document) => batch.delete(document.ref));
+    attachmentChunks.docs.forEach((document) => batch.delete(document.ref));
     batch.delete(ref);
     appendAudit(
       db,
