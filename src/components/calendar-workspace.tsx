@@ -659,7 +659,7 @@ function Month({
         return (
           <div
             key={key(d)}
-            className="min-h-28 border-b border-r border-[var(--border)] p-2 text-left"
+            className="min-h-28 min-w-0 overflow-hidden border-b border-r border-[var(--border)] p-2 text-left"
           >
             <button type="button" className="font-bold" onClick={() => select(d)}>
               {d.getDate()}
@@ -668,7 +668,8 @@ function Month({
               <button
                 type="button"
                 key={e.id}
-                className="mt-1 truncate bg-orange-500/15 px-1 text-xs"
+                title={e.title}
+                className="mt-1 block w-full max-w-full truncate bg-orange-500/15 px-1 text-left text-xs"
                 onClick={(event) => {
                   event.stopPropagation();
                   edit(e);
