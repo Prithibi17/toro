@@ -28,6 +28,7 @@ type E = {
   relatedType?: string;
   relatedId?: string;
   tags?: string[];
+  visibility?: "everyone" | "admins";
 };
 type View = "week" | "day" | "month" | "list";
 const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()),
@@ -42,10 +43,12 @@ export function CalendarWorkspace({
   companyId,
   userId,
   userName,
+  canSetAdminVisibility,
 }: {
   companyId: string;
   userId: string;
   userName: string;
+  canSetAdminVisibility: boolean;
 }) {
   const searchParams = useSearchParams();
   const loadGeneration = useRef(0);
@@ -187,6 +190,9 @@ export function CalendarWorkspace({
       title: String(values.title),
       location: String(values.location ?? ""),
       description: String(values.description ?? ""),
+      visibility: String(
+        values.visibility ?? selectedEvent.visibility ?? "everyone",
+      ) as "everyone" | "admins",
       ...range,
       tags: eventTags,
     };
@@ -417,6 +423,15 @@ export function CalendarWorkspace({
               name="location"
               placeholder="Location"
             />
+            {canSetAdminVisibility && (
+              <label className="mt-3 block">
+                <span className="label">Who can see this event?</span>
+                <select className="input" name="visibility" defaultValue="everyone">
+                  <option value="everyone">Everyone</option>
+                  <option value="admins">Admins only</option>
+                </select>
+              </label>
+            )}
             <div className="mt-3">
               <TagSelector
                 companyId={companyId}
@@ -457,6 +472,19 @@ export function CalendarWorkspace({
               <span className="label">Location</span>
               <input className="input" name="location" defaultValue={selectedEvent.location} />
             </label>
+            {canSetAdminVisibility && (
+              <label className="mt-3 block">
+                <span className="label">Who can see this event?</span>
+                <select
+                  className="input"
+                  name="visibility"
+                  defaultValue={selectedEvent.visibility ?? "everyone"}
+                >
+                  <option value="everyone">Everyone</option>
+                  <option value="admins">Admins only</option>
+                </select>
+              </label>
+            )}
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label>
                 <span className="label">Starts</span>

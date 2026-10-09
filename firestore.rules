@@ -309,12 +309,41 @@ service cloud.firestore {
        * Calendar
        */
       match /calendarEvents/{eventId} {
-        allow read: if isActiveMember(companyId);
+        allow read: if isActiveMember(companyId)
+          && (
+            !resource.data.keys().hasAny(["visibility"])
+            || resource.data.visibility == "everyone"
+            || isCompanyAdmin(companyId)
+          );
 
         allow create: if isActiveMember(companyId)
-          && request.resource.data.creatorId == request.auth.uid;
+          && request.resource.data.creatorId == request.auth.uid
+          && (
+            !request.resource.data.keys().hasAny(["visibility"])
+            || request.resource.data.visibility == "everyone"
+            || (
+              request.resource.data.visibility == "admins"
+              && isCompanyAdmin(companyId)
+            )
+          );
 
-        allow update, delete: if isCompanyAdmin(companyId)
+        allow update: if (
+            isCompanyAdmin(companyId)
+            || (
+              isActiveMember(companyId)
+              && resource.data.creatorId == request.auth.uid
+            )
+          )
+          && (
+            !request.resource.data.keys().hasAny(["visibility"])
+            || request.resource.data.visibility == "everyone"
+            || (
+              request.resource.data.visibility == "admins"
+              && isCompanyAdmin(companyId)
+            )
+          );
+
+        allow delete: if isCompanyAdmin(companyId)
           || (
             isActiveMember(companyId)
             && resource.data.creatorId == request.auth.uid

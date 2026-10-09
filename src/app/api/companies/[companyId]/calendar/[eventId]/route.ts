@@ -9,6 +9,7 @@ import { appendAudit } from "@/lib/audit";
 import { calendarEventUpdate } from "@/lib/calendar-model";
 import { getAdmin } from "@/lib/firebase-admin";
 import { z } from "zod";
+import { canSetCalendarVisibility } from "@/lib/calendar-visibility";
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ companyId: string; eventId: string }> },
@@ -32,6 +33,16 @@ export async function PATCH(
       !isCompanyAdministrator(auth.access.membership)
     )
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    if (
+      !canSetCalendarVisibility(
+        isCompanyAdministrator(auth.access.membership),
+        input.visibility,
+      )
+    )
+      return NextResponse.json(
+        { error: "Only an owner or admin can make an event admins-only" },
+        { status: 403 },
+      );
     const update: Record<string, unknown> = {
       ...input,
       updatedBy: auth.access.user.uid,

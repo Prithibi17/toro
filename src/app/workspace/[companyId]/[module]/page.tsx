@@ -56,6 +56,7 @@ export default async function ModulePage({
         companyId={companyId}
         userId={ctx.user.uid}
         userName={ctx.user.name ?? ctx.user.email ?? "My Calendar"}
+        canSetAdminVisibility={["owner", "admin"].includes(ctx.membership.role)}
       />
     );
   const found = MODULES.find((m) => m.key === module);

@@ -11,6 +11,7 @@ const fields = z.object({
   relatedType: z.string().max(50).default(""),
   relatedId: z.string().max(128).default(""),
   tags: z.array(z.string().trim().min(1).max(128)).max(30).default([]),
+  visibility: z.enum(["everyone", "admins"]).default("everyone"),
 });
 export const calendarEventInput = fields.refine(
   (v) => new Date(v.end) > new Date(v.start),

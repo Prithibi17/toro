@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
+import {
+  authorizeCompany,
+  authorizationStatus,
+  isCompanyAdministrator,
+} from "@/lib/authorization";
 import { appendAudit } from "@/lib/audit";
 import { calendarEventInput } from "@/lib/calendar-model";
 import { getAdmin } from "@/lib/firebase-admin";
 import { z } from "zod";
+import {
+  canSetCalendarVisibility,
+  canViewCalendarEvent,
+} from "@/lib/calendar-visibility";
 const iso = (v: unknown) =>
   v && typeof v === "object" && "toDate" in v
     ? (v as { toDate(): Date }).toDate().toISOString()
@@ -33,6 +41,7 @@ export async function GET(
       .map((d) => ({
         id: d.id,
         ...d.data(),
+        visibility: d.data().visibility ?? "everyone",
         start:
           iso(d.data().start) ??
           (d.data().date ? `${d.data().date}T09:00:00.000Z` : null),
@@ -40,6 +49,12 @@ export async function GET(
           iso(d.data().end) ??
           (d.data().date ? `${d.data().date}T10:00:00.000Z` : null),
       }))
+      .filter((event) =>
+        canViewCalendarEvent(
+          isCompanyAdministrator(auth.access.membership),
+          event,
+        ),
+      )
       .filter(
         (e) =>
           e.start &&
@@ -64,6 +79,16 @@ export async function POST(
       db = getAdmin().db,
       ref = db.collection(`companies/${companyId}/calendarEvents`).doc(),
       batch = db.batch();
+    if (
+      !canSetCalendarVisibility(
+        isCompanyAdministrator(auth.access.membership),
+        input.visibility,
+      )
+    )
+      return NextResponse.json(
+        { error: "Only an owner or admin can create an admins-only event" },
+        { status: 403 },
+      );
     batch.create(ref, {
       ...input,
       start: Timestamp.fromDate(new Date(input.start)),
