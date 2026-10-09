@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ATTENDANCE_REQUIRED_MINUTES } from "@/lib/attendance";
 
 type AttendanceRecord = {
   id: string;
@@ -69,7 +70,9 @@ export function AttendanceCalendar({
       <header className="flex items-center justify-between border-b border-[var(--border)] p-5">
         <div>
           <h2 className="font-bold">Attendance</h2>
-          <p className="mt-1 text-xs muted">30 active minutes marks attendance</p>
+          <p className="mt-1 text-xs muted">
+            {ATTENDANCE_REQUIRED_MINUTES} active minutes marks attendance
+          </p>
         </div>
         <div className="flex items-center gap-1">
           <button className="rounded-lg p-2 hover:bg-[var(--soft)]" disabled={loading} onClick={() => void moveMonth(-1)}>
@@ -122,7 +125,7 @@ export function AttendanceCalendar({
               : future
                 ? "Scheduled"
                 : record?.activeSeconds
-                  ? `${Math.floor(record.activeSeconds / 60)} / 30 min`
+                  ? `${Math.floor(record.activeSeconds / 60)} / ${ATTENDANCE_REQUIRED_MINUTES} min`
                   : selected < today
                     ? "Absent"
                     : "Pending";

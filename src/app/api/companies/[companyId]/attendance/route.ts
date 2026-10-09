@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { authorizeCompany, authorizationStatus } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
+import { attendancePresent } from "@/lib/attendance";
 
 const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5, 6];
 const weekdayNumbers: Record<string, number> = {
@@ -51,7 +52,17 @@ export async function GET(
     db.collection(`companies/${companyId}/departments`).get(),
   ]);
   return NextResponse.json({
-    records: records.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    records: records.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        present: attendancePresent(
+          Number(data.activeSeconds ?? 0),
+          data.scheduled !== false,
+        ),
+      };
+    }),
     members: members.docs.map((doc) => ({
       id: doc.id,
       displayName: doc.data().displayName ?? doc.data().email ?? "Member",
@@ -103,7 +114,7 @@ export async function POST(
         departmentId,
         scheduled,
         activeSeconds,
-        present: scheduled && activeSeconds >= 1800,
+        present: attendancePresent(activeSeconds, scheduled),
         firstSeenAt: existing.data()?.firstSeenAt ?? FieldValue.serverTimestamp(),
         lastPingAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -111,5 +122,10 @@ export async function POST(
       { merge: true },
     );
   });
-  return NextResponse.json({ date, scheduled, activeSeconds, present: scheduled && activeSeconds >= 1800 });
+  return NextResponse.json({
+    date,
+    scheduled,
+    activeSeconds,
+    present: attendancePresent(activeSeconds, scheduled),
+  });
 }

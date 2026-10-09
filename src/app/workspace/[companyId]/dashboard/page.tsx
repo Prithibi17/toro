@@ -4,6 +4,7 @@ import { CalendarDays, CheckCircle2, Clock3, FolderKanban } from "lucide-react";
 import { authorizeCompanyPage } from "@/lib/authorization";
 import { getAdmin } from "@/lib/firebase-admin";
 import { AttendanceCalendar } from "@/components/attendance-calendar";
+import { attendancePresent } from "@/lib/attendance";
 
 type RecordData = FirebaseFirestore.DocumentData & { id: string };
 
@@ -221,7 +222,10 @@ export default async function Dashboard({
               userId: String(doc.data().userId),
               date: String(doc.data().date),
               activeSeconds: Number(doc.data().activeSeconds ?? 0),
-              present: Boolean(doc.data().present),
+              present: attendancePresent(
+                Number(doc.data().activeSeconds ?? 0),
+                doc.data().scheduled !== false,
+              ),
             })),
             members: memberSnap.docs
               .filter((doc) => doc.data().status === "active")
