@@ -61,7 +61,7 @@ export function CalendarWorkspace({
     [selectedEvent, setSelectedEvent] = useState<E | null>(null),
     [error, setError] = useState(""),
     [dialogError, setDialogError] = useState(""),
-    [mine, setMine] = useState(true),
+    [mine, setMine] = useState(false),
     [activities, setActivities] = useState(true);
   useEffect(() => {
     if (open || selectedEvent) setDialogError("");
@@ -349,7 +349,7 @@ export function CalendarWorkspace({
               onChange={(e) => setMine(e.target.checked)}
             />
             <i className="mt-1 h-2.5 w-2.5 rounded-sm bg-orange-500" />
-            {userName}
+            Only my events ({userName})
           </label>
           <h2 className="mt-6 border-t border-[var(--border)] pt-4 text-xs font-bold uppercase muted">
             My Activities
