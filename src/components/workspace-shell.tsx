@@ -61,6 +61,7 @@ export function WorkspaceShell({
   role,
   modules,
   canManageMembers,
+  canViewEmployees,
   canManageApps,
   children,
 }: {
@@ -72,6 +73,7 @@ export function WorkspaceShell({
   role: string;
   modules: ModuleKey[];
   canManageMembers: boolean;
+  canViewEmployees: boolean;
   canManageApps: boolean;
   children: React.ReactNode;
 }) {
@@ -94,7 +96,7 @@ export function WorkspaceShell({
     ...(canManageApps
       ? [{ href: `${base}/apps`, label: "Apps", icon: <Grid2X2 size={18} /> }]
       : []),
-    ...(canManageMembers
+    ...(canViewEmployees
       ? [
           {
             href: `${base}/employees`,

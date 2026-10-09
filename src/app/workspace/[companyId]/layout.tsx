@@ -32,6 +32,10 @@ export default async function Layout({
     simplePermissionAllowed(m, "employees.manage") ||
     effectivePermissions.actions["security.members.manage"] === true ||
     effectivePermissions.legacyPermissions["members.manage"] === true;
+  const canViewEmployees =
+    canManageMembers ||
+    simplePermissionAllowed(m, "employees.view") ||
+    simplePermissionAllowed(m, "employees.invite");
   const canManageApps =
     m.role === "owner" ||
     effectivePermissions.actions["security.apps.manage"] === true ||
@@ -46,6 +50,7 @@ export default async function Layout({
       role={m.role || "member"}
       modules={modules}
       canManageMembers={canManageMembers}
+      canViewEmployees={canViewEmployees}
       canManageApps={canManageApps}
     >
       {children}

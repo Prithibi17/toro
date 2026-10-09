@@ -33,6 +33,26 @@ describe("To-Do assignment policy", () => {
         { id: "other", status: "active" },
       ),
     ).toBe(true);
+    expect(
+      canAssignTodoTo(
+        "me",
+        member({ permissionOverrides: { "todo.assign": "allow" } }),
+        { id: "any-active-member", status: "active" },
+      ),
+    ).toBe(true);
+  });
+  it("honors an explicit assignment restriction", () => {
+    expect(
+      canAssignTodoTo(
+        "manager",
+        member({
+          role: "manager",
+          departmentIds: ["sales"],
+          permissionOverrides: { "todo.assign": "deny" },
+        }),
+        { id: "sales-user", status: "active", departmentIds: ["sales"] },
+      ),
+    ).toBe(false);
   });
   it("limits managers to their departments", () => {
     const manager = member({ role: "manager", departmentIds: ["sales"] });

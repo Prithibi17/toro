@@ -7,6 +7,7 @@ import { appendAudit } from "@/lib/audit";
 import type { PermissionKey } from "@/lib/types";
 import { SIMPLE_PERMISSIONS } from "@/lib/permission-catalog";
 import { memberAccessUpdateInput } from "@/lib/member-access-input";
+import { can } from "@/lib/can";
 const keys = [
   "members.manage",
   "apps.manage",
@@ -43,17 +44,37 @@ export async function POST(
   { params }: { params: Promise<{ companyId: string }> },
 ) {
   const { companyId } = await params;
-  const authz = await authorizeCompany(companyId, {
-    permission: "members.manage",
-  });
+  const authz = await authorizeCompany(companyId);
   if (!authz.ok)
     return NextResponse.json(
       { error: "Access denied" },
       { status: authorizationStatus(authz.reason) },
     );
   const ctx = authz.access;
+  const canManageMembers =
+    can(ctx, "employees.manage") ||
+    ctx.effectivePermissions.actions["security.members.manage"] === true ||
+    ctx.effectivePermissions.legacyPermissions["members.manage"] === true;
+  const canInviteMembers = can(ctx, "employees.invite");
+  if (!canManageMembers && !canInviteMembers)
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
   try {
     const data = input.parse(await req.json());
+    if (
+      !canManageMembers &&
+      (data.role === "admin" ||
+        data.role === "manager" ||
+        data.roleIds.length > 0 ||
+        data.permissions.length > 0 ||
+        Object.keys(data.crmPermissions).length > 0)
+    )
+      return NextResponse.json(
+        {
+          error:
+            "Invite access can add employees and interns without administrative permissions",
+        },
+        { status: 403 },
+      );
     if (
       ctx.membership.role !== "owner" &&
       (data.role === "admin" ||

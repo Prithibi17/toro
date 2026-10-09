@@ -9,6 +9,9 @@ export function canAssignTodoTo(
 ) {
   if (target.status !== "active") return false;
   if (target.id === userId) return true;
+  const override = membership.permissionOverrides?.["todo.assign"];
+  if (override === "deny") return false;
+  if (override === "allow") return true;
   if (membership.actionPermissions?.["todo.task.assign"] === false)
     return false;
   if (

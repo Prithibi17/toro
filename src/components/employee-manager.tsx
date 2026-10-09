@@ -95,6 +95,7 @@ export function EmployeeManager({
   companyName,
   initialInvitations,
   canManageDepartments,
+  canManageMembers,
   canInviteMembers,
   initialMembers,
   departments,
@@ -104,6 +105,7 @@ export function EmployeeManager({
   companyName: string;
   initialInvitations: Invitation[];
   canManageDepartments: boolean;
+  canManageMembers: boolean;
   canInviteMembers: boolean;
   initialMembers: Member[];
   departments: Department[];
@@ -201,24 +203,26 @@ export function EmployeeManager({
       displayName: f.get("displayName"),
       role: f.get("role"),
       userType: f.get("userType"),
-      roleIds: f.getAll("roleIds"),
+      roleIds: canManageMembers ? f.getAll("roleIds") : [],
       departmentIds: f.getAll("departmentIds"),
-      permissions: f.getAll("permissions"),
-      crmPermissions: Object.fromEntries(
-        crmSections.map((section) => [
-          section,
-          {
-            view: String(f.get(`crm.${section}.view`) || "none"),
-            create: f.get(`crm.${section}.create`) === "on",
-            edit: String(f.get(`crm.${section}.edit`) || "none"),
-            delete: String(f.get(`crm.${section}.delete`) || "none"),
-            assign: String(f.get(`crm.${section}.assign`) || "none"),
-            moveStage: f.get(`crm.${section}.moveStage`) === "on",
-            close: f.get(`crm.${section}.close`) === "on",
-            manage: f.get(`crm.${section}.manage`) === "on",
-          },
-        ]),
-      ),
+      permissions: canManageMembers ? f.getAll("permissions") : [],
+      crmPermissions: canManageMembers
+        ? Object.fromEntries(
+            crmSections.map((section) => [
+              section,
+              {
+                view: String(f.get(`crm.${section}.view`) || "none"),
+                create: f.get(`crm.${section}.create`) === "on",
+                edit: String(f.get(`crm.${section}.edit`) || "none"),
+                delete: String(f.get(`crm.${section}.delete`) || "none"),
+                assign: String(f.get(`crm.${section}.assign`) || "none"),
+                moveStage: f.get(`crm.${section}.moveStage`) === "on",
+                close: f.get(`crm.${section}.close`) === "on",
+                manage: f.get(`crm.${section}.manage`) === "on",
+              },
+            ]),
+          )
+        : {},
     };
     const r = await fetch(`/api/companies/${companyId}/members`, {
       method: "POST",
@@ -360,12 +364,16 @@ export function EmployeeManager({
               </div>
               <span className="capitalize">{m.role}</span>
               <span className="capitalize text-emerald-500">{m.status}</span>
-              <EmployeeActions
-                companyId={companyId}
-                member={m}
-                connect={() => setConnector(m)}
-                remove={() => void openRemoval(m)}
-              />
+              {canManageMembers ? (
+                <EmployeeActions
+                  companyId={companyId}
+                  member={m}
+                  connect={() => setConnector(m)}
+                  remove={() => void openRemoval(m)}
+                />
+              ) : (
+                <span />
+              )}
             </div>
           ))}
       </div>
@@ -532,31 +540,37 @@ export function EmployeeManager({
                 <select className="input" name="role">
                   <option value="employee">Employee</option>
                   <option value="intern">Intern</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Company admin</option>
+                  {canManageMembers && (
+                    <>
+                      <option value="manager">Manager</option>
+                      <option value="admin">Company admin</option>
+                    </>
+                  )}
                 </select>
               </label>
-              <fieldset>
-                <legend className="label">Enterprise roles</legend>
-                <div className="max-h-28 space-y-2 overflow-auto rounded-xl border border-[var(--border)] p-3">
-                  {roles.map((role) => (
-                    <label className="flex gap-2 text-sm" key={role.id}>
-                      <input type="checkbox" name="roleIds" value={role.id} />
-                      <span>
-                        <b className="block">{role.name}</b>
-                        {role.description && (
-                          <small className="muted">{role.description}</small>
-                        )}
+              {canManageMembers && (
+                <fieldset>
+                  <legend className="label">Enterprise roles</legend>
+                  <div className="max-h-28 space-y-2 overflow-auto rounded-xl border border-[var(--border)] p-3">
+                    {roles.map((role) => (
+                      <label className="flex gap-2 text-sm" key={role.id}>
+                        <input type="checkbox" name="roleIds" value={role.id} />
+                        <span>
+                          <b className="block">{role.name}</b>
+                          {role.description && (
+                            <small className="muted">{role.description}</small>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                    {!roles.length && (
+                      <span className="text-sm muted">
+                        No custom roles configured
                       </span>
-                    </label>
-                  ))}
-                  {!roles.length && (
-                    <span className="text-sm muted">
-                      No custom roles configured
-                    </span>
-                  )}
-                </div>
-              </fieldset>
+                    )}
+                  </div>
+                </fieldset>
+              )}
               <fieldset>
                 <legend className="label">Departments</legend>
                 <div className="max-h-28 space-y-2 overflow-auto rounded-xl border border-[var(--border)] p-3">
@@ -578,7 +592,7 @@ export function EmployeeManager({
                 </div>
               </fieldset>
             </div>
-            <fieldset className="mt-5">
+            {canManageMembers && <fieldset className="mt-5">
               <legend className="label">Allowed actions</legend>
               <div className="grid gap-2 sm:grid-cols-2">
                 {permissionOptions.map((p) => (
@@ -594,8 +608,8 @@ export function EmployeeManager({
                   </label>
                 ))}
               </div>
-            </fieldset>
-            <fieldset className="mt-5">
+            </fieldset>}
+            {canManageMembers && <fieldset className="mt-5">
               <legend className="label">CRM permissions</legend>
               <div className="space-y-3">
                 {crmSections.map((section) => (
@@ -631,7 +645,7 @@ export function EmployeeManager({
                   </details>
                 ))}
               </div>
-            </fieldset>
+            </fieldset>}
             {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
             <div className="mt-6 flex justify-end gap-2">
               <button
