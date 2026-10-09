@@ -13,7 +13,10 @@ import { crmAllowed } from "@/lib/crm-server";
 import { can } from "@/lib/can";
 import { getApps } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
-import { normalizeCompletionSummary } from "@/lib/todo-completion";
+import {
+  canChangeTodoStage,
+  normalizeCompletionSummary,
+} from "@/lib/todo-completion";
 const mention = z.object({
   entityType: z.enum(["member", "contact", "company", "tag"]),
   entityId: z.string().min(1).max(128),
@@ -53,15 +56,27 @@ export async function PATCH(
     const isAdministrator = ["owner", "admin"].includes(
         a.access.membership.role,
       ),
-      isManager = a.access.membership.role === "manager";
+      isManager = a.access.membership.role === "manager",
+      task = doc.data()!,
+      isRegularEditor =
+        isAdministrator ||
+        isManager ||
+        task.assigneeIds?.includes(a.access.user.uid) ||
+        task.creatorId === a.access.user.uid,
+      isStageOnlyUpdate = Object.keys(data).every((key) =>
+        ["stageId", "completionSummary"].includes(key),
+      );
     if (
-      !canReadTask(a.access.user.uid, a.access.membership, doc.data()!) ||
-      (!isAdministrator &&
-        !isManager &&
-        !doc.data()?.assigneeIds?.includes(a.access.user.uid) &&
-        doc.data()?.creatorId !== a.access.user.uid)
+      !canReadTask(a.access.user.uid, a.access.membership, task) ||
+      (!isRegularEditor &&
+        !(isStageOnlyUpdate && canChangeTodoStage(a.access.user.uid, task)))
     )
       return NextResponse.json({ error: "Access denied" }, { status: 403 });
+    if (data.stageId && !canChangeTodoStage(a.access.user.uid, task))
+      return NextResponse.json(
+        { error: "Only the assigner or assignee can change this To-Do's stage" },
+        { status: 403 },
+      );
     let stage: null | FirebaseFirestore.DocumentSnapshot = null;
     if (data.stageId) {
       stage = await db

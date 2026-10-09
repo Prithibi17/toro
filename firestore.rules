@@ -72,6 +72,21 @@ service cloud.firestore {
         && memberRole(companyId) in ["owner", "admin"];
     }
 
+    function canChangeTaskStage(task) {
+      return isActiveMember(task.companyId)
+        && (
+          request.auth.uid in task.assigneeIds
+          || (
+            task.keys().hasAny(["assignedById"])
+            && request.auth.uid == task.assignedById
+          )
+          || (
+            !task.keys().hasAny(["assignedById"])
+            && request.auth.uid == task.creatorId
+          )
+        );
+    }
+
     function hasEnabledModule(companyId, moduleName) {
       return isActiveMember(companyId)
         && moduleName in get(
@@ -193,16 +208,44 @@ service cloud.firestore {
           && request.resource.data.companyId == companyId
           && request.resource.data.creatorId == request.auth.uid;
 
-        allow update: if isCompanyAdmin(companyId)
-          || (
-            isActiveMember(companyId)
-            && (
-              request.auth.uid == resource.data.creatorId
-              || request.auth.uid in resource.data.assigneeIds
+        allow update: if (
+          (
+            isCompanyAdmin(companyId)
+            || (
+              isActiveMember(companyId)
+              && (
+                request.auth.uid == resource.data.creatorId
+                || request.auth.uid in resource.data.assigneeIds
+              )
             )
-            && request.resource.data.companyId == resource.data.companyId
-            && request.resource.data.creatorId == resource.data.creatorId
-          );
+          )
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              "stageId",
+              "status",
+              "completedAt",
+              "completionSummary",
+              "completedById",
+              "completedByName"
+            ])
+            || canChangeTaskStage(resource.data)
+          )
+          || (
+            canChangeTaskStage(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "stageId",
+              "status",
+              "completedAt",
+              "completionSummary",
+              "completedById",
+              "completedByName",
+              "updatedBy",
+              "updatedAt"
+            ])
+          )
+        )
+        && request.resource.data.companyId == resource.data.companyId
+        && request.resource.data.creatorId == resource.data.creatorId;
 
         allow delete: if isCompanyAdmin(companyId)
           || (

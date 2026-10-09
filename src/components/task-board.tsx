@@ -21,6 +21,7 @@ type Task = {
   dueDate?: string;
   stageId: string;
   completedAt?: string;
+  canChangeStage?: boolean;
   assignee?: { id: string; displayName: string; status?: string } | null;
 };
 type Stage = {
@@ -82,6 +83,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
     } else setError((await r.json()).error);
   }
   async function move(id: string, stageId: string) {
+    if (!tasks.find((task) => task.id === id)?.canChangeStage) return;
     const before = tasks;
     setTasks((x) => x.map((t) => (t.id === id ? { ...t, stageId } : t)));
     const r = await fetch(`/api/companies/${companyId}/tasks/${id}`, {
@@ -160,7 +162,8 @@ export function TaskBoard({ companyId }: { companyId: string }) {
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 const id = e.dataTransfer.getData("text/plain");
-                if (id) void move(id, stage.id);
+                if (id && tasks.find((task) => task.id === id)?.canChangeStage)
+                  void move(id, stage.id);
               }}
             >
               <header className="mb-3 flex items-center justify-between px-1">
@@ -186,7 +189,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                     return (
                     <article
                       key={t.id}
-                      draggable
+                      draggable={Boolean(t.canChangeStage)}
                       onDragStart={(e) =>
                         e.dataTransfer.setData("text/plain", t.id)
                       }
@@ -196,7 +199,7 @@ export function TaskBoard({ companyId }: { companyId: string }) {
                       onPointerEnter={() =>
                         router.prefetch(`/workspace/${companyId}/todo/${t.id}`)
                       }
-                      className="panel cursor-pointer p-4"
+                      className={`panel p-4 ${t.canChangeStage ? "cursor-grab" : "cursor-pointer"}`}
                     >
                       <div className="flex justify-between gap-2">
                         <b>{t.title}</b>

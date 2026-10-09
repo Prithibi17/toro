@@ -30,6 +30,7 @@ export function TodoRecord({
   members,
   currentAssignee,
   canDelete,
+  canChangeStage,
   canPostProgress,
 }: {
   companyId: string;
@@ -39,6 +40,7 @@ export function TodoRecord({
   members: I[];
   currentAssignee?: I;
   canDelete: boolean;
+  canChangeStage: boolean;
   canPostProgress: boolean;
 }) {
   const router = useRouter(),
@@ -316,6 +318,8 @@ export function TodoRecord({
         <div className="flex gap-2">
           <button
             className="btn btn-primary"
+            disabled={!canChangeStage}
+            title={canChangeStage ? undefined : "Only the assigner or assignee can change the stage"}
             onClick={() => {
               if (done)
                 void update({ stageId: stages.find((stage) => !stage.isDone)?.id });
@@ -357,6 +361,8 @@ export function TodoRecord({
             <Field label="Stage">
               <select
                 className="input"
+                disabled={!canChangeStage}
+                title={canChangeStage ? undefined : "Only the assigner or assignee can change the stage"}
                 value={String(record.stageId)}
                 onChange={(e) => {
                   const nextStage = stages.find((stage) => stage.id === e.target.value);

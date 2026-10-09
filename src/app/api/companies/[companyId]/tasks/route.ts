@@ -10,6 +10,7 @@ import {
 import { appendAudit } from "@/lib/audit";
 import { ensureTodoStages } from "@/lib/todo-stages";
 import { canAssignTodoTo } from "@/lib/todo-assignment";
+import { canChangeTodoStage } from "@/lib/todo-completion";
 const input = z.object({
   title: z.string().trim().min(1).max(160),
   description: z.string().trim().max(4000).default(""),
@@ -83,6 +84,7 @@ export async function GET(
           legacy = stages.find((s) => s.legacyStatus === d.data().status);
         return {
           ...data,
+          canChangeStage: canChangeTodoStage(a.access.user.uid, d.data()),
           stageId: stages.some((stage) => stage.id === d.data().stageId)
             ? d.data().stageId
             : legacy?.id || stages[0]?.id,

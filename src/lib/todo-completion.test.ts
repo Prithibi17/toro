@@ -5,6 +5,7 @@ import {
   TODO_ATTACHMENT_MAX_BYTES,
   TODO_ATTACHMENT_CHUNK_BYTES,
   canPostTodoProgress,
+  canChangeTodoStage,
   splitTodoAttachmentBytes,
 } from "./todo-completion";
 
@@ -34,5 +35,26 @@ describe("To-Do completion", () => {
     expect(canPostTodoProgress("assigned", ["assigned"])).toBe(true);
     expect(canPostTodoProgress("creator", ["assigned"])).toBe(false);
     expect(canPostTodoProgress("owner", undefined)).toBe(false);
+  });
+
+  it("allows stage changes only for the assigner or assignee", () => {
+    const task = {
+      assignedById: "assigner",
+      creatorId: "creator",
+      assigneeIds: ["assignee"],
+    };
+    expect(canChangeTodoStage("assigner", task)).toBe(true);
+    expect(canChangeTodoStage("assignee", task)).toBe(true);
+    expect(canChangeTodoStage("creator", task)).toBe(false);
+    expect(canChangeTodoStage("admin", task)).toBe(false);
+  });
+
+  it("uses the creator as the assigner for legacy To-Dos", () => {
+    expect(
+      canChangeTodoStage("creator", {
+        creatorId: "creator",
+        assigneeIds: ["assignee"],
+      }),
+    ).toBe(true);
   });
 });

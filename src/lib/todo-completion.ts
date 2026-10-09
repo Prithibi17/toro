@@ -34,3 +34,14 @@ export function splitTodoAttachmentBytes(bytes: Uint8Array) {
 export function canPostTodoProgress(userId: string, assigneeIds: unknown) {
   return Array.isArray(assigneeIds) && assigneeIds.includes(userId);
 }
+
+export function canChangeTodoStage(
+  userId: string,
+  task: { assignedById?: unknown; creatorId?: unknown; assigneeIds?: unknown },
+) {
+  const assignerId = String(task.assignedById || task.creatorId || "");
+  return (
+    userId === assignerId ||
+    (Array.isArray(task.assigneeIds) && task.assigneeIds.includes(userId))
+  );
+}
