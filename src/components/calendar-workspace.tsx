@@ -13,6 +13,10 @@ import {
 import { TagSelector, type SharedTag } from "./tag-selector";
 import { WorkspaceEntityInput } from "./workspace-entity-input";
 import { cachedJson, invalidateClientCache } from "@/lib/client-api-cache";
+import {
+  calendarDateTimeInput,
+  calendarDateTimeRange,
+} from "@/lib/calendar-datetime";
 type E = {
   id: string;
   title: string;
@@ -56,8 +60,12 @@ export function CalendarWorkspace({
     [open, setOpen] = useState<{ start: Date; end: Date } | null>(null),
     [selectedEvent, setSelectedEvent] = useState<E | null>(null),
     [error, setError] = useState(""),
+    [dialogError, setDialogError] = useState(""),
     [mine, setMine] = useState(true),
     [activities, setActivities] = useState(true);
+  useEffect(() => {
+    if (open || selectedEvent) setDialogError("");
+  }, [open, selectedEvent]);
   const from =
       view === "month"
         ? new Date(date.getFullYear(), date.getMonth(), 1)
@@ -114,10 +122,17 @@ export function CalendarWorkspace({
   async function create(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!open) return;
+    const values = Object.fromEntries(new FormData(e.currentTarget));
+    let range: { start: string; end: string };
+    try {
+      range = calendarDateTimeRange(values.start, values.end);
+    } catch (cause) {
+      setDialogError(cause instanceof Error ? cause.message : "Choose a valid date and time");
+      return;
+    }
     const body = {
-      ...Object.fromEntries(new FormData(e.currentTarget)),
-      start: open.start.toISOString(),
-      end: open.end.toISOString(),
+      ...values,
+      ...range,
       tags: eventTags,
     };
     const r = await fetch(`/api/companies/${companyId}/calendar`, {
@@ -131,7 +146,7 @@ export function CalendarWorkspace({
       setEvents((current) => [result.event, ...current]);
       setOpen(null);
       setEventTags([]);
-    } else setError((await r.json()).error);
+    } else setDialogError((await r.json()).error ?? "Could not create event");
   }
   async function move(id: string, target: Date) {
     const old = events.find((e) => e.id === id);
@@ -161,10 +176,18 @@ export function CalendarWorkspace({
     event.preventDefault();
     if (!selectedEvent) return;
     const values = Object.fromEntries(new FormData(event.currentTarget));
+    let range: { start: string; end: string };
+    try {
+      range = calendarDateTimeRange(values.start, values.end);
+    } catch (cause) {
+      setDialogError(cause instanceof Error ? cause.message : "Choose a valid date and time");
+      return;
+    }
     const update = {
       title: String(values.title),
       location: String(values.location ?? ""),
       description: String(values.description ?? ""),
+      ...range,
       tags: eventTags,
     };
     setEvents((current) =>
@@ -185,7 +208,7 @@ export function CalendarWorkspace({
       setSelectedEvent(null);
       setEventTags([]);
     } else {
-      setError((await response.json()).error ?? "Could not update event");
+      setDialogError((await response.json()).error ?? "Could not update event");
       await load();
     }
   }
@@ -360,11 +383,30 @@ export function CalendarWorkspace({
                 <X />
               </button>
             </div>
-            <p className="mt-2 text-sm muted">
-              {open.start.toLocaleString()} – {open.end.toLocaleTimeString()}
-            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="label">Starts</span>
+                <input
+                  className="input"
+                  type="datetime-local"
+                  name="start"
+                  required
+                  defaultValue={calendarDateTimeInput(open.start)}
+                />
+              </label>
+              <label>
+                <span className="label">Ends</span>
+                <input
+                  className="input"
+                  type="datetime-local"
+                  name="end"
+                  required
+                  defaultValue={calendarDateTimeInput(open.end)}
+                />
+              </label>
+            </div>
             <input
-              className="input mt-4"
+              className="input mt-3"
               name="title"
               placeholder="Title"
               required
@@ -384,6 +426,11 @@ export function CalendarWorkspace({
                 onChange={(ids) => setEventTags(ids)}
               />
             </div>
+            {dialogError && (
+              <p className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
+                {dialogError}
+              </p>
+            )}
             <button className="btn btn-primary mt-4 w-full">Create</button>
           </form>
         </div>
@@ -410,6 +457,28 @@ export function CalendarWorkspace({
               <span className="label">Location</span>
               <input className="input" name="location" defaultValue={selectedEvent.location} />
             </label>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="label">Starts</span>
+                <input
+                  className="input"
+                  type="datetime-local"
+                  name="start"
+                  required
+                  defaultValue={calendarDateTimeInput(selectedEvent.start)}
+                />
+              </label>
+              <label>
+                <span className="label">Ends</span>
+                <input
+                  className="input"
+                  type="datetime-local"
+                  name="end"
+                  required
+                  defaultValue={calendarDateTimeInput(selectedEvent.end)}
+                />
+              </label>
+            </div>
             <label className="mt-3 block">
               <span className="label">Description</span>
               <textarea className="input min-h-24" name="description" defaultValue={String((selectedEvent as E & { description?: string }).description ?? "")} />
@@ -424,6 +493,11 @@ export function CalendarWorkspace({
                 onChange={(ids) => setEventTags(ids)}
               />
             </div>
+            {dialogError && (
+              <p className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
+                {dialogError}
+              </p>
+            )}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" className="btn btn-secondary" onClick={() => setSelectedEvent(null)}>Cancel</button>
               <button className="btn btn-primary">Save changes</button>
