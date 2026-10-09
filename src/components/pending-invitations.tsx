@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
 import { Building2, Check, X } from "lucide-react";
+import { memberRoleLabel } from "@/lib/member-role";
 
 interface PendingInvitation {
   id: string;
@@ -65,7 +66,7 @@ export function PendingInvitations() {
               <div>
                 <p className="font-semibold leading-tight">{inv.companyName}</p>
                 <p className="mt-0.5 text-xs muted capitalize">
-                  Role: {inv.role} · Invited by {inv.invitedBy}
+                  Role: {memberRoleLabel(inv.role)} · Invited by {inv.invitedBy}
                 </p>
                 {inv.expiresAt && (
                   <p className="mt-0.5 text-xs text-amber-500">

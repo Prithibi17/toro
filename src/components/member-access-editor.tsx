@@ -9,6 +9,7 @@ import {
   SIMPLE_PERMISSIONS,
   basePermissionAllowed,
 } from "@/lib/permission-catalog";
+import { memberRoleLabel } from "@/lib/member-role";
 
 type Member = Record<string, unknown> & { id: string };
 
@@ -111,7 +112,7 @@ export function MemberAccessEditor({
             {member.role === "owner" && <option value="owner">Owner</option>}
             {availableRoles.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {memberRoleLabel(item)}
               </option>
             ))}
           </select>

@@ -20,6 +20,7 @@ import { IdFinderCardModal } from "./id-finder-card-modal";
 import { IdFinderConnector } from "./id-finder-connector";
 import type { IdFinderConnection } from "@/lib/id-finder";
 import { useOutsideDismiss } from "@/lib/use-outside-dismiss";
+import { memberRoleLabel } from "@/lib/member-role";
 type Member = {
   id: string;
   displayName?: string;
@@ -312,7 +313,7 @@ export function EmployeeManager({
               <div>
                 <b>{invitation.displayName ?? invitation.email}</b>
                 <p className="text-sm muted">
-                  {invitation.email} · {invitation.role}
+                  {invitation.email} · {memberRoleLabel(invitation.role)}
                 </p>
               </div>
               <button
@@ -362,7 +363,7 @@ export function EmployeeManager({
                   <p className="mt-1 truncate text-sm muted">{m.email}</p>
                 </div>
               </div>
-              <span className="capitalize">{m.role}</span>
+              <span>{memberRoleLabel(m.role)}</span>
               <span className="capitalize text-emerald-500">{m.status}</span>
               {canManageMembers ? (
                 <EmployeeActions
@@ -539,7 +540,7 @@ export function EmployeeManager({
                 <span className="label">Role</span>
                 <select className="input" name="role">
                   <option value="employee">Employee</option>
-                  <option value="intern">Intern</option>
+                  <option value="intern">Employee (Intern)</option>
                   {canManageMembers && (
                     <>
                       <option value="manager">Manager</option>

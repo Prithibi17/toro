@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { memberRoleLabel } from "@/lib/member-role";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -708,8 +709,8 @@ function UsersView({
                 <td className="px-3 py-3 capitalize">
                   {String(member.userType ?? "internal")}
                 </td>
-                <td className="px-3 py-3 capitalize">
-                  {String(member.role ?? "—")}
+                <td className="px-3 py-3">
+                  {memberRoleLabel(member.role)}
                 </td>
                 <td className="px-3 py-3 capitalize">
                   {String(member.status ?? "—")}

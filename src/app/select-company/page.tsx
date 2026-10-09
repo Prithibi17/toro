@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { memberRoleLabel } from "@/lib/member-role";
 import { redirect } from "next/navigation";
 import { ArrowRight, Building2, Settings } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -67,7 +68,7 @@ export default async function SelectCompany() {
               </div>
               <h2 className="text-xl font-bold">{m.companyName}</h2>
               <p className="mt-1 text-sm capitalize muted">
-                {m.role} · {m.status}
+                {memberRoleLabel(m.role)} · {m.status}
               </p>
             </Link>
           ))}

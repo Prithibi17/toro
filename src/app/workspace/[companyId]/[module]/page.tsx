@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { memberRoleLabel } from "@/lib/member-role";
 import { Mail, ShieldCheck, Users } from "lucide-react";
 import { MODULES, type ModuleKey } from "@/lib/types";
 import { authorizeCompany } from "@/lib/authorization";
@@ -176,7 +177,7 @@ async function Employees({ companyId }: { companyId: string }) {
                 <b>{x.displayName || x.email || "Unnamed member"}</b>
                 <p className="mt-1 text-sm muted">{x.email}</p>
               </div>
-              <span className="capitalize">{x.role}</span>
+              <span>{memberRoleLabel(x.role)}</span>
               <span className="capitalize text-emerald-500">{x.status}</span>
             </div>
           );
