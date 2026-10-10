@@ -9,6 +9,7 @@ import {
   canChangeTodoStage,
   canPostTodoProgress,
 } from "@/lib/todo-completion";
+import { ensureTodoStages, resolveTodoStageId } from "@/lib/todo-stages";
 export default async function Page({
   params,
 }: {
@@ -22,6 +23,7 @@ export default async function Page({
     doc = await db.doc(`companies/${companyId}/tasks/${taskId}`).get();
   if (!doc.exists || !canReadTask(ctx.user.uid, ctx.membership, doc.data()!))
     notFound();
+  await ensureTodoStages(db, companyId, ctx.user.uid);
   const [stages, history, members] = await Promise.all([
     db
       .collection(`companies/${companyId}/todoStages`)
@@ -34,29 +36,35 @@ export default async function Page({
       .get(),
     db.collection(`companies/${companyId}/members`).limit(500).get(),
   ]);
+  const personalStages = stages.docs
+    .map(
+      (stage) =>
+        ({ id: stage.id, ...stage.data() }) as Record<string, unknown> & {
+          id: string;
+          isDone?: boolean;
+          legacyStatus?: string;
+        },
+    )
+    .sort((a, b) => Number(a.sequence) - Number(b.sequence));
+  const task = {
+    id: doc.id,
+    ...doc.data(),
+    stageId: resolveTodoStageId(doc.data()!, personalStages),
+  };
   const assigneeId = String(doc.data()?.assigneeIds?.[0] ?? "");
   const assigneeDoc = members.docs.find((member) => member.id === assigneeId);
   return (
     <TodoRecord
       companyId={companyId}
       task={
-        serializeFirestore({ id: doc.id, ...doc.data() }) as Record<
+        serializeFirestore(task) as Record<
           string,
           unknown
         > & {
           id: string;
         }
       }
-      stages={serializeFirestore(
-        stages.docs
-          .map(
-            (d) =>
-              ({ id: d.id, ...d.data() }) as Record<string, unknown> & {
-                id: string;
-              },
-          )
-          .sort((a, b) => Number(a.sequence) - Number(b.sequence)),
-      )}
+      stages={serializeFirestore(personalStages)}
       history={
         serializeFirestore(
           history.docs.map((d) => ({ id: d.id, ...d.data() })),

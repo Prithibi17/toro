@@ -8,7 +8,7 @@ import {
   canReadTask,
 } from "@/lib/authorization";
 import { appendAudit } from "@/lib/audit";
-import { ensureTodoStages } from "@/lib/todo-stages";
+import { ensureTodoStages, resolveTodoStageId } from "@/lib/todo-stages";
 import { canAssignTodoTo } from "@/lib/todo-assignment";
 import { canChangeTodoStage } from "@/lib/todo-completion";
 const input = z.object({
@@ -80,14 +80,11 @@ export async function GET(
               : d.data().assigneeIds?.includes(a.access.user.uid)),
       )
       .map((d) => {
-        const data = serial(d),
-          legacy = stages.find((s) => s.legacyStatus === d.data().status);
+        const data = serial(d);
         return {
           ...data,
           canChangeStage: canChangeTodoStage(a.access.user.uid, d.data()),
-          stageId: stages.some((stage) => stage.id === d.data().stageId)
-            ? d.data().stageId
-            : legacy?.id || stages[0]?.id,
+          stageId: resolveTodoStageId(data, stages),
           assignee: (() => {
             const id = String(d.data().assigneeIds?.[0] ?? ""),
               member = memberById.get(id);
